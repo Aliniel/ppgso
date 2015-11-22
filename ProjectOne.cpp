@@ -131,11 +131,8 @@ void initializeGeometry(GLuint ProgramID){
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertexBufferData), vertexBufferData, GL_STATIC_DRAW); // Giving the vertices to OpenGL.
 
   auto Position = glGetAttribLocation(ProgramID, "Position");
-//  glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
   glVertexAttribPointer(Position, 2, GL_FLOAT, GL_FALSE, 0, 0);
   glEnableVertexAttribArray(Position);
-
-  //glDisableVertexAttribArray(0);
 
   static const GLfloat texCoordData[] =  {
           // u, v
