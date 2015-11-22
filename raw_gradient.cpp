@@ -25,9 +25,9 @@ int main() {
   // Example: Generate a simple gradient
   for ( unsigned int x = 0; x < SIZE; ++x ) {
     for ( unsigned int y = 0; y < SIZE; ++y ) {
-      framebuffer[x][y].r = ((unsigned char) ((unsigned int) x/2));
-      framebuffer[x][y].g = ((unsigned char) ((unsigned int) y/2));
-      framebuffer[x][y].b = 0;
+      framebuffer[x][y].r = 255;
+      framebuffer[x][y].g = 255;
+      framebuffer[x][y].b = 255;
     }
   }
 
@@ -37,7 +37,7 @@ int main() {
   // Task4: Draw lines and Bezier curves
 
   // Save the raw image to a file
-  std::ofstream raw("result.rgb", std::ios::binary);
+  std::ofstream raw("white.rgb", std::ios::binary);
   raw.write((char*)framebuffer, sizeof(framebuffer));
   raw.close();
 

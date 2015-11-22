@@ -80,6 +80,25 @@ target_link_libraries( gl_objects ${LIBRARIES} )
 install ( TARGETS gl_objects DESTINATION . )
 install ( FILES gl_objects.vert gl_objects.frag sphere.obj sphere.rgb cursor.obj DESTINATION . )
 
+# ProjectOne
+add_executable( ProjectOne ProjectOne.cpp )
+target_link_libraries( ProjectOne ${LIBRARIES} )
+
+install ( TARGETS ProjectOne DESTINATION . )
+
+# PaPP_p2
+add_executable( PPaP PaPP_p2.cpp )
+target_link_libraries( PPaP ${LIBRARIES} )
+
+install ( TARGETS PPaP DESTINATION . )
+
+# TheGame
+add_executable( TheGame TheGame.cpp object_3d.cpp tiny_obj_loader.cpp )
+target_link_libraries( TheGame ${LIBRARIES} )
+
+install ( TARGETS TheGame DESTINATION . )
+install ( FILES TheGameVert.glsl TheGameFrag.glsl sphere.obj sphere.rgb cursor.obj DESTINATION . )
+
 # ADD YOUR PROJECT HERE
 #add_executable( my_project my_project.cpp my_project_other.cpp )
 #target_link_libraries( my_project ${LIBRARIES} )
@@ -93,3 +112,22 @@ if ( MINGW )
   # Install dlls into binary dir for development and debugging
   file ( COPY ${GLFW_LIBRARIES} ${GLEW_LIBRARIES} DESTINATION ${CMAKE_BINARY_DIR} )
 endif ()
+
+find_package(OpenMP)
+if (OPENMP_FOUND)
+    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+endif()
+
+#PROJECT(test)
+#SET(CMAKE_C_COMPILER mpicc)
+#SET(CMAKE_CXX_COMPILER mpicxx)
+#target_link_libraries(PPaP mpi)
+
+# Require MPI for this project:
+find_package(MPI REQUIRED)
+SET(CMAKE_CXX_COMPILER mpicxx)
+#set(CMAKE_CXX_COMPILE_FLAGS ${CMAKE_CXX_COMPILE_FLAGS} ${MPI_COMPILE_FLAGS})
+#set(CMAKE_CXX_LINK_FLAGS ${CMAKE_CXX_LINK_FLAGS} ${MPI_LINK_FLAGS})
+include_directories($MPI_INCLUDE_PATH)
+target_link_libraries(PPaP ${MPI_LIBRARIES})
