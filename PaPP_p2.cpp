@@ -13,7 +13,6 @@
 #include <vector>
 #include <omp.h>
 #include <mpi.h>
-#include <unistd.h>
 
 using namespace std;
 using namespace glm;
@@ -189,14 +188,23 @@ GLuint LoadImage(const string &image_file, unsigned int width, unsigned int heig
 }
 
 void convolution(Pixel *chunk, int rows) {
+    int me, np;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    MPI_Comm_size(MPI_COMM_WORLD, &np);
+
     unsigned int center = k/2;
+
+    if(me != 0 && me != np - 1){
+        rows += 2 * center;
+    }
+    else{
+        rows += center;
+    }
+
     // Output buffer
     Pixel **image = (Pixel **) malloc(rows * sizeof(Pixel *));
 
-    int me;
-    MPI_Comm_rank(MPI_COMM_WORLD, &me);
-
-    //#pragma omp parallel for schedule(dynamic) num_threads(4)
+    #pragma omp parallel for schedule(dynamic) num_threads(4)
     for(int i = 0; i < rows; i++){
         image[i] = (Pixel *)malloc(WIDTH * sizeof(Pixel));
         for(int j = 0; j < WIDTH; j++){
@@ -222,7 +230,6 @@ void convolution(Pixel *chunk, int rows) {
                     else if(pj >= WIDTH){
                         pj = -1-(center-kj);
                     }
-//                    cout << i << " J: " << j << " ki " << ki << " kj " << kj << " pi " << pi << " pj " << pj << " center " << center << " rows " << rows << endl;
                     // i - (center - ki):
                     // The Pixel in the middle - The distance of kernel element from the centre.
                     // I get the indexes of pixel corresponding to kernel element.
@@ -258,14 +265,28 @@ void convolution(Pixel *chunk, int rows) {
             image[i][j].b = (unsigned char)blue;
         }
     }
-    cout << "C2" << endl;
-    for(unsigned int i = 0; i < rows; i++) {
-        for (unsigned int j = 0; j < WIDTH; j++) {
-            chunk[i * WIDTH + j] = image[i][j];
-//            background[i][j] = image[i][j];
+
+    if(me == 0) {
+        for (unsigned int i = 0; i < rows - center; i++) {
+            for (unsigned int j = 0; j < WIDTH; j++) {
+                chunk[i * WIDTH + j] = image[i][j];
+            }
         }
     }
-    cout << "Inside COnvolution chunk 10 000 " << (int)chunk[1598534].g << endl;
+    else if(me != np - 1){
+        for (unsigned int i = center; i < rows - center; i++) {
+            for (unsigned int j = 0; j < WIDTH; j++) {
+                chunk[(i - center) * WIDTH + j] = image[i][j];
+            }
+        }
+    }
+    else{
+        for (unsigned int i = center; i < rows; i++) {
+            for (unsigned int j = 0; j < WIDTH; j++) {
+                chunk[(i - center) * WIDTH + j] = image[i][j];
+            }
+        }
+    }
 }
 
 void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int action, int mods){
@@ -274,106 +295,110 @@ void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int acti
     if(action == GLFW_PRESS) {
         switch (key) {
             case GLFW_KEY_1:{
-                cout << "Activating convolution filter: >> Edge Detection 3x3 <<" << endl;
-                k = 3;
-                float kernelData[3][3] = {
-                        -1.0, -1.0, -1.0,
-                        -1.0,  8.0, -1.0,
-                        -1.0, -1.0, -1.0
-                };
-
-                cout << "Defining Pixel" << endl;
-                // Defining Pixel in MPI
-                Pixel pixel;
-                MPI_Datatype MPI_Pixel;
-                int structLengthArray[3] = {1, 1, 1};
-                MPI_Aint structDisplacement[3] = {0, &pixel.g - &pixel.r, &pixel.b - &pixel.r};
-                MPI_Datatype oldTypes[3] ={MPI_CHAR, MPI_CHAR, MPI_CHAR};
-
-                MPI_Type_create_struct(3, structLengthArray, structDisplacement, oldTypes, &MPI_Pixel);
-                MPI_Type_commit(&MPI_Pixel);
-
                 int me, processes;
                 MPI_Comm_size(MPI_COMM_WORLD, &processes);
                 MPI_Comm_rank(MPI_COMM_WORLD, &me);
 
-                cout << "Setting displacement and rows" << endl;
-                // Setting up displacements and rows for scattering
-                int rows = HEIGHT/processes;
-                int *displacement = (int *)malloc(processes * sizeof(int)), *count = (int *)malloc(processes * sizeof(int));
-                for(int i = 0; i < processes; i ++){
-                    displacement[i] = i * rows - k/2;
-                    count[i]= rows + 2*(k/2);
-                }
-                // The first and last sections are special
-                displacement[0] = 0;
-                if(processes != 1){
-                    count[0] = rows + k/2;
-                }
-                else{
-                    count[0] = rows * WIDTH;
-                }
-                if(processes - 1 != 0){
-                    count[processes - 1] = k/2;
+                if(me == 0) {
+                    cout << "Activating convolution filter: >> Blur 3x3 <<" << endl;
                 }
 
-                cout << "Transforming into 1D" << endl;
-                // Transforming background image into 1D array
-                Pixel *chunk = (Pixel *)malloc(WIDTH * HEIGHT * sizeof(Pixel));
-                for(int i = 0; i < HEIGHT; i++){
-                    for(int j = 0; j < WIDTH; j++){
-                        chunk[i * WIDTH + j] = background[i][j];
+                // Signaling other processes:
+                if (me == 0) {
+                    for (int i = 1; i < processes; i++) {
+                        int sign = 1;
+                        MPI_Send(&sign, 1, MPI_INT, i, 55, MPI_COMM_WORLD);
                     }
                 }
 
-                // Receiving buffer
-                Pixel *myChunk = (Pixel *)malloc((rows + 2 * (k/2)) * WIDTH * sizeof(Pixel));
+                // Kernel:
+                k = 3;
+                float kernelData[3][3] = {
+                        -1.0, -1.0, -1.0,
+                        -1.0, 8.0, -1.0,
+                        -1.0, -1.0, -1.0
+                };
 
-                cout << "Scattering data" << endl;
-                // Scatter the data over all processes
-                MPI_Scatterv(chunk, count, displacement, MPI_Pixel, myChunk, count[me], MPI_Pixel, 0, MPI_COMM_WORLD);
-
-                cout << "coun 0 " << count[0] << " disp 0 " << displacement[0] << endl;
-                cout << "Setting kernel" << endl;
                 // Reset the global kernel
                 free(kernel);
-                kernel = (float **)malloc(k * sizeof(float *));
-                for (int i = 0; i < k; i++){
-                    kernel[i] = (float *)malloc(3 * sizeof(float));
-                    for(int j = 0; j < k; j++){
+                kernel = (float **) malloc(k * sizeof(float *));
+                for (int i = 0; i < k; i++) {
+                    kernel[i] = (float *) malloc(3 * sizeof(float));
+                    for (int j = 0; j < k; j++) {
                         kernel[i][j] = kernelData[i][j];
                     }
                 }
 
-                cout << me << ": Convolution started Chunk 10 000 " << (int)chunk[1598534].g << endl;
-                cout << me << ": Convolution started myChunk 10 000 " << (int)myChunk[1598534].g << endl;
-                convolution(myChunk, rows);
-                cout << me << ": Convolution ended my chunk 10 000 " << (int)myChunk[1598534].g << endl;
+                // Defining Pixel in MPI:
+                Pixel pixel;
+                MPI_Datatype MPI_Pixel;
+                int structLengthArray[3] = {1, 1, 1};
+                MPI_Aint structDisplacement[3] = {0, &pixel.g - &pixel.r, &pixel.b - &pixel.r};
+                MPI_Datatype oldTypes[3] = {MPI_CHAR, MPI_CHAR, MPI_CHAR};
 
-                cout << me << ": Setting displacements and rows for gathering" << endl;
-                // Setting up displacements and rows for gathering
-                for(int i = 0; i < processes; i ++){
-                    displacement[i] = k/2;
-                    count[i]= rows * WIDTH;
+                MPI_Type_create_struct(3, structLengthArray, structDisplacement, oldTypes, &MPI_Pixel);
+                MPI_Type_commit(&MPI_Pixel);
+
+                // Number of rows everyone gets (+ additional for correct convolution):
+                int rows = HEIGHT / processes;
+
+                // Setting up displacements and rows for scattering
+                int *displacement = (int *) malloc(processes * sizeof(int));
+                int *count = (int *) malloc(processes * sizeof(int));
+
+                // If I am alone - no cluster:
+                if (processes - 1 == 0) {
+                    count[0] = HEIGHT;
+                    displacement[0] = 0;
                 }
-                displacement[0] = 0;
+                //Setting for multiple processes
+                else {
+                    for (int i = 1; i < processes - 1; i++) {
+                        displacement[i] = i * rows * WIDTH - k / 2;
+                        count[i] = (rows + 2 * (k / 2)) * WIDTH;
+                    }
+                    // The first and last sections are special
+                    displacement[0] = 0;
+                    count[0] = (rows + k / 2) * WIDTH;
 
-                cout << "Gathering data:" << endl;
-                // Gather the convoluted data abck to process 0
-                MPI_Gatherv(myChunk, count[me], MPI_Pixel, chunk, count, displacement, MPI_Pixel, 0, MPI_COMM_WORLD);
+                    displacement[processes - 1] = (processes - 1) * rows * WIDTH - k / 2;
+                    count[processes - 1] = (rows + k / 2) * WIDTH;
+                }
 
-                cout << "Building 2D" << endl;
-                // Build the background image
-                for(int i = 0; i < HEIGHT; i++){
-                    for(int j = 0; j < WIDTH; j ++){
-//                        printf("Background: %d chunk: %d\n", background[i][j].r, chunk[i * WIDTH + j].r);
-                        background[i][j] = chunk[i * WIDTH + j];
-//                        printf("Background: %d chunk: %d\n", background[i][j].r, chunk[i * WIDTH + j].r);
-
+                // Transforming background image into 1D array:
+                Pixel *chunk = (Pixel *) malloc(WIDTH * HEIGHT * sizeof(Pixel));
+                for (int i = 0; i < HEIGHT; i++) {
+                    for (int j = 0; j < WIDTH; j++) {
+                        chunk[i * WIDTH + j] = background[i][j];
                     }
                 }
-                if(me != 0) {
-                    MPI_Finalize();
+                // Receiving buffer:
+                Pixel *myChunk = (Pixel *) malloc((rows + 2 * (k / 2)) * WIDTH * sizeof(Pixel));
+
+                // Scatter the data over all processes:
+                MPI_Scatterv(chunk, count, displacement, MPI_Pixel, myChunk, count[me], MPI_Pixel, 0,
+                             MPI_COMM_WORLD);
+
+                // Calculating convolution
+                convolution(myChunk, rows);
+
+                // Setting up displacements and rows for gathering
+                for (int i = 0; i < processes; i++) {
+                    displacement[i] = i * rows * WIDTH;
+                    count[i] = rows * WIDTH;
+                }
+
+                // Gather the convoluted data abck to process 0
+                MPI_Gatherv(myChunk, count[me], MPI_Pixel, chunk, count, displacement, MPI_Pixel, 0,
+                                MPI_COMM_WORLD);
+
+                if (me == 0) {
+                    // Build the background image
+                    for (int i = 0; i < HEIGHT; i++) {
+                        for (int j = 0; j < WIDTH; j++) {
+                            background[i][j] = chunk[i * WIDTH + j];
+                        }
+                    }
                 }
                 break;
             }
@@ -466,12 +491,12 @@ void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int acti
 //                cout << ">> MotionBlur 9x9 << finished. Took " << time << " seconds to finish." << endl;
 //                break;
 //            }
-//            case GLFW_KEY_X:{
-//                ifstream image_stream("bridge.rgb", ios::binary);
-//                image_stream.read((char *) background, sizeof(background));
-//                image_stream.close();
-//                break;
-//            }
+            case GLFW_KEY_X:{
+                ifstream image_stream("bridge.rgb", ios::binary);
+                image_stream.read((char *) background, sizeof(background));
+                image_stream.close();
+                break;
+            }
             default:{
                 break;
             }
@@ -479,15 +504,31 @@ void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int acti
     }
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv){
 
     int me, np;
+
     MPI_Init(&argc, &argv);
-    MPI_Comm_size(MPI_COMM_WORLD, &np);
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
+    MPI_Comm_size(MPI_COMM_WORLD, &np);
+
+    while(me != 0){
+        int sign;
+        MPI_Recv(&sign, 1, MPI_INT, 0, 55, MPI_COMM_WORLD, NULL);
+        switch(sign){
+            case 1:{
+                keyCallback(NULL, GLFW_KEY_1, 0, GLFW_PRESS, 0);
+                break;
+            }
+            default:{
+                MPI_Finalize();
+                return EXIT_SUCCESS;
+            }
+        }
+    }
 
     //GLFW initialization - controlling window and keyboard.
-    if (!glfwInit()) {
+    if(!glfwInit()){
         fprintf(stderr, "Failed to initialize GLFW\n");
         return EXIT_FAILURE;
     }
@@ -499,16 +540,15 @@ int main(int argc, char **argv) {
 
     // Making a window.
     window = glfwCreateWindow(1920, 1080, "PPaP Project II", NULL, NULL);
-    if (window == NULL) {
-        fprintf(stderr,
-                "Failed to open GLFW window. The GPU is not compatible with OpenGL 3.3. Basicly, you're in trouble :)\n");
+    if(window == NULL){
+        fprintf(stderr, "Failed to open GLFW window. The GPU is not compatible with OpenGL 3.3. Basicly, you're in trouble :)\n");
         glfwTerminate();
         return EXIT_FAILURE;
     }
     glfwMakeContextCurrent(window);
 
     glewExperimental = GL_TRUE;
-    if (glewInit() != GLEW_OK) {
+    if(glewInit() != GLEW_OK){
         fprintf(stderr, "Failed to initialize GLEW.\n");
         return EXIT_FAILURE;
     }
@@ -529,14 +569,14 @@ int main(int argc, char **argv) {
     glBindTexture(GL_TEXTURE_2D, TextureID);
 
     ifstream loadImg("Moon.rgba", ios::in | ios::binary);
-    loadImg.read((char *) moon, sizeof(moon));
+    loadImg.read((char *)moon, sizeof(moon));
     loadImg.close();
 
-    for (int i = 0; i < MOON_SIZE; i++) {
-        for (int j = 0; j < MOON_SIZE; j++) {
-            if (moon[i][j].a != 0) {
+    for(int i = 0; i < MOON_SIZE; i++){
+        for(int j = 0; j < MOON_SIZE; j++){
+            if(moon[i][j].a != 0){
                 double r = (rand() % 56) + 200;
-                moon[i][j].a = (unsigned char) (r);
+                moon[i][j].a = (unsigned char)(r);
             }
         }
     }
@@ -544,12 +584,12 @@ int main(int argc, char **argv) {
     glfwSetKeyCallback(window, keyCallback);
 
     // Main loop where the magic happens.
-    do {
-        glClearColor(.5f, .5f, .5f, 0);
+    do{
+        glClearColor(.5f,.5f,.5f,0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        for (int i = 0; i < WIDTH; i++) {
-            for (int j = 0; j < HEIGHT; j++) {
+        for(int i = 0; i < WIDTH; i++){
+            for(int j = 0; j < HEIGHT; j++){
                 framebuffer[j][i] = background[j][i];
             }
         }
@@ -561,9 +601,14 @@ int main(int argc, char **argv) {
         glfwSwapBuffers(window);
         glfwPollEvents();
 
-    } while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(window) == 0);
+    }while(glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(window) == 0);
 
     glfwTerminate();
+    for(int i = 1; i < np; i++){
+        int sign = -1;
+        MPI_Send(&sign, 1, MPI_INT, i, 55, MPI_COMM_WORLD);
+    }
+
     MPI_Finalize();
 
     return EXIT_SUCCESS;
