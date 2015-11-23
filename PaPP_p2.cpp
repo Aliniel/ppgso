@@ -13,6 +13,7 @@
 #include <vector>
 #include <omp.h>
 #include <mpi.h>
+#include <unistd.h>
 
 using namespace std;
 using namespace glm;
@@ -29,20 +30,13 @@ struct aPixel {
     unsigned char r,g,b,a;
 };
 
-struct Chunk{
-
-    int rows;
-    Pixel **data;
-
-    unsigned char k;
-    float **kernel;
-
-};
-
 GLFWwindow *window;
 Pixel framebuffer[HEIGHT][WIDTH]; // For Displaying.
 Pixel background[HEIGHT][WIDTH]; // For background image.
 aPixel moon[MOON_SIZE][MOON_SIZE]; // For the Moon-Moon.
+int k;
+float **kernel;
+int initialized, finalized;
 
 // Loading the shaders. For the most part copied from the "gl_texture.cpp" and an online tutorial.
 GLuint LoadShaders(const string vertex_shader_file, const string fragment_shader_file){
@@ -194,26 +188,31 @@ GLuint LoadImage(const string &image_file, unsigned int width, unsigned int heig
     return TextureID;
 }
 
-void convolution(Chunk *chunk){
-    unsigned int center = chunk->k / 2;
-    Pixel **image = (Pixel **)malloc(HEIGHT * sizeof(Pixel *));
+void convolution(Pixel *chunk, int rows) {
+    unsigned int center = k/2;
+    // Output buffer
+    Pixel **image = (Pixel **) malloc(rows * sizeof(Pixel *));
 
-    #pragma omp parallel for schedule(dynamic) num_threads(4)
-    for(unsigned int i = 0; i < chunk->rows; i++){
+    int me;
+    MPI_Comm_rank(MPI_COMM_WORLD, &me);
+
+    //#pragma omp parallel for schedule(dynamic) num_threads(4)
+    for(int i = 0; i < rows; i++){
         image[i] = (Pixel *)malloc(WIDTH * sizeof(Pixel));
-        for(unsigned int j = 0; j < WIDTH; j++){
+        for(int j = 0; j < WIDTH; j++){
+
             double red = 0, green = 0, blue = 0;
 
-            for(unsigned int ki = 0; ki < chunk->k; ki++){
-                for(unsigned kj = 0; kj < chunk->k; kj++){
+            for(int ki = 0; ki < k; ki++){
+                for(int kj = 0; kj < k; kj++){
                     int pi, pj;
                     pi = i-(center-ki);
                     pj = j-(center-kj);
 
                     if(pi < 0){
-                        pi = chunk->rows-(center-ki);
+                        pi = rows-(center-ki);
                     }
-                    else if(pi >= chunk->rows){
+                    else if(pi >= rows){
                         pi = -1-(center-ki);
                     }
 
@@ -223,12 +222,13 @@ void convolution(Chunk *chunk){
                     else if(pj >= WIDTH){
                         pj = -1-(center-kj);
                     }
+//                    cout << i << " J: " << j << " ki " << ki << " kj " << kj << " pi " << pi << " pj " << pj << " center " << center << " rows " << rows << endl;
                     // i - (center - ki):
                     // The Pixel in the middle - The distance of kernel element from the centre.
                     // I get the indexes of pixel corresponding to kernel element.
-                    red += (double)chunk->data[pi][pj].r * chunk->kernel[ki][kj];
-                    green += (double)chunk->data[pi][pj].g * chunk->kernel[ki][kj];
-                    blue += (double)chunk->data[pi][pj].b * chunk->kernel[ki][kj];
+                    red += (double)chunk[pi * WIDTH + pj].r * kernel[ki][kj];
+                    green += (double)chunk[pi * WIDTH + pj].g * kernel[ki][kj];
+                    blue += (double)chunk[pi * WIDTH + pj].b * kernel[ki][kj];
                 }
             }
 
@@ -256,14 +256,16 @@ void convolution(Chunk *chunk){
             image[i][j].r = (unsigned char)red;
             image[i][j].g = (unsigned char)green;
             image[i][j].b = (unsigned char)blue;
-
         }
     }
-    for(unsigned int i = 0; i < chunk->rows; i++) {
+    cout << "C2" << endl;
+    for(unsigned int i = 0; i < rows; i++) {
         for (unsigned int j = 0; j < WIDTH; j++) {
-            chunk->data[i][j] = image[i][j];
+            chunk[i * WIDTH + j] = image[i][j];
+//            background[i][j] = image[i][j];
         }
     }
+    cout << "Inside COnvolution chunk 10 000 " << (int)chunk[1598534].g << endl;
 }
 
 void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int action, int mods){
@@ -271,86 +273,108 @@ void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int acti
 
     if(action == GLFW_PRESS) {
         switch (key) {
-            case GLFW_KEY_1: {
+            case GLFW_KEY_1:{
                 cout << "Activating convolution filter: >> Edge Detection 3x3 <<" << endl;
-                float data[3][3] = {
+                k = 3;
+                float kernelData[3][3] = {
                         -1.0, -1.0, -1.0,
                         -1.0,  8.0, -1.0,
                         -1.0, -1.0, -1.0
                 };
 
-                float **kernel = (float **)malloc(3 * sizeof(float *));
-                for (int i = 0; i < 3; i++){
-                    kernel[i] = (float *)malloc(3 * sizeof(float));
-                    for(int j = 0; j < 3; j++){
-                        kernel[i][j] = data[i][j];
-                    }
+                cout << "Defining Pixel" << endl;
+                // Defining Pixel in MPI
+                Pixel pixel;
+                MPI_Datatype MPI_Pixel;
+                int structLengthArray[3] = {1, 1, 1};
+                MPI_Aint structDisplacement[3] = {0, &pixel.g - &pixel.r, &pixel.b - &pixel.r};
+                MPI_Datatype oldTypes[3] ={MPI_CHAR, MPI_CHAR, MPI_CHAR};
+
+                MPI_Type_create_struct(3, structLengthArray, structDisplacement, oldTypes, &MPI_Pixel);
+                MPI_Type_commit(&MPI_Pixel);
+
+                int me, processes;
+                MPI_Comm_size(MPI_COMM_WORLD, &processes);
+                MPI_Comm_rank(MPI_COMM_WORLD, &me);
+
+                cout << "Setting displacement and rows" << endl;
+                // Setting up displacements and rows for scattering
+                int rows = HEIGHT/processes;
+                int *displacement = (int *)malloc(processes * sizeof(int)), *count = (int *)malloc(processes * sizeof(int));
+                for(int i = 0; i < processes; i ++){
+                    displacement[i] = i * rows - k/2;
+                    count[i]= rows + 2*(k/2);
                 }
-                time = omp_get_wtime();
-
-                int np;
-                MPI_Comm_size(MPI_COMM_WORLD, &np);
-                int chunkSize = HEIGHT/np;
-                Chunk *chunk = (Chunk *)malloc(sizeof(Chunk));
-                int rowsSent = 0;
-
-                cout << "ANTI TEST 1 Chunk Size " << chunkSize << endl;
-                chunk->data = (Pixel **)malloc(chunkSize * sizeof(Pixel *));
-                for(int i = 1; i < np; i ++){
-                    chunk->rows = chunkSize;
-                    for(int j = 0; j < chunkSize; j++){
-                        rowsSent ++;
-                        chunk->data[j] = (Pixel *) malloc(WIDTH * sizeof(Pixel));
-                        for(int k = 0; k < WIDTH; k++){
-                            chunk->data[j][k] = background[rowsSent][k];
-                        }
-                    }
-                    chunk->k = 3;
-                    chunk->kernel = kernel;
-
-                    MPI_Send(chunk, 1, MPI_BYTE, i, 50, MPI_COMM_WORLD);
+                // The first and last sections are special
+                displacement[0] = 0;
+                if(processes != 1){
+                    count[0] = rows + k/2;
+                }
+                else{
+                    count[0] = rows * WIDTH;
+                }
+                if(processes - 1 != 0){
+                    count[processes - 1] = k/2;
                 }
 
-                cout << "ANTI TEST 2\n";
-                int lastChunkIndex = rowsSent;
-                chunk->rows = chunkSize;
-                for(int j = 0; j < chunkSize; j++){
-                    chunk->data[j] = (Pixel *) malloc(WIDTH * sizeof(Pixel));
-                    for(int k = 0; k < WIDTH; k++){
-                        chunk->data[j][k] = background[rowsSent][k];
-                    }
-                    rowsSent ++;
-                }
-                chunk->k = 3;
-                chunk->kernel = kernel;
-                cout << "ANTI TEST 3\n";
-                convolution(chunk);
-
-                cout << "ANTI TEST 4\n";
-                cout << "last chunk: " << lastChunkIndex << " chunk size " << chunkSize << endl;
-                for(int i = 0; i < chunkSize; i ++) {
+                cout << "Transforming into 1D" << endl;
+                // Transforming background image into 1D array
+                Pixel *chunk = (Pixel *)malloc(WIDTH * HEIGHT * sizeof(Pixel));
+                for(int i = 0; i < HEIGHT; i++){
                     for(int j = 0; j < WIDTH; j++){
-//                        cout << i << " " << j << " " << "\n";
-                        background[lastChunkIndex][j] = chunk->data[i][j];
-                    }
-                    lastChunkIndex ++;
-                }
-
-                cout << "ANTI TEST 5\n";
-                MPI_Status status;
-                rowsSent = 0;
-                for(int i = 1; i < np; i++){
-                    MPI_Recv(chunk, 1, MPI_BYTE, i, 50, MPI_COMM_WORLD, &status);
-                    for(int j = 0; j < chunkSize; j ++) {
-                        for(int k = 0; k < WIDTH; k++){
-                            background[rowsSent][k] = chunk->data[j][k];
-                        }
-                        rowsSent ++;
+                        chunk[i * WIDTH + j] = background[i][j];
                     }
                 }
 
-                time = omp_get_wtime() - time;
-                cout << ">> Edge Detection 3x3 << finished. Took " << time << " seconds to finish." << endl;
+                // Receiving buffer
+                Pixel *myChunk = (Pixel *)malloc((rows + 2 * (k/2)) * WIDTH * sizeof(Pixel));
+
+                cout << "Scattering data" << endl;
+                // Scatter the data over all processes
+                MPI_Scatterv(chunk, count, displacement, MPI_Pixel, myChunk, count[me], MPI_Pixel, 0, MPI_COMM_WORLD);
+
+                cout << "coun 0 " << count[0] << " disp 0 " << displacement[0] << endl;
+                cout << "Setting kernel" << endl;
+                // Reset the global kernel
+                free(kernel);
+                kernel = (float **)malloc(k * sizeof(float *));
+                for (int i = 0; i < k; i++){
+                    kernel[i] = (float *)malloc(3 * sizeof(float));
+                    for(int j = 0; j < k; j++){
+                        kernel[i][j] = kernelData[i][j];
+                    }
+                }
+
+                cout << me << ": Convolution started Chunk 10 000 " << (int)chunk[1598534].g << endl;
+                cout << me << ": Convolution started myChunk 10 000 " << (int)myChunk[1598534].g << endl;
+                convolution(myChunk, rows);
+                cout << me << ": Convolution ended my chunk 10 000 " << (int)myChunk[1598534].g << endl;
+
+                cout << me << ": Setting displacements and rows for gathering" << endl;
+                // Setting up displacements and rows for gathering
+                for(int i = 0; i < processes; i ++){
+                    displacement[i] = k/2;
+                    count[i]= rows * WIDTH;
+                }
+                displacement[0] = 0;
+
+                cout << "Gathering data:" << endl;
+                // Gather the convoluted data abck to process 0
+                MPI_Gatherv(myChunk, count[me], MPI_Pixel, chunk, count, displacement, MPI_Pixel, 0, MPI_COMM_WORLD);
+
+                cout << "Building 2D" << endl;
+                // Build the background image
+                for(int i = 0; i < HEIGHT; i++){
+                    for(int j = 0; j < WIDTH; j ++){
+//                        printf("Background: %d chunk: %d\n", background[i][j].r, chunk[i * WIDTH + j].r);
+                        background[i][j] = chunk[i * WIDTH + j];
+//                        printf("Background: %d chunk: %d\n", background[i][j].r, chunk[i * WIDTH + j].r);
+
+                    }
+                }
+                if(me != 0) {
+                    MPI_Finalize();
+                }
                 break;
             }
 //            case GLFW_KEY_2: {
@@ -442,12 +466,12 @@ void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int acti
 //                cout << ">> MotionBlur 9x9 << finished. Took " << time << " seconds to finish." << endl;
 //                break;
 //            }
-            case GLFW_KEY_X:{
-                ifstream image_stream("bridge.rgb", ios::binary);
-                image_stream.read((char *) background, sizeof(background));
-                image_stream.close();
-                break;
-            }
+//            case GLFW_KEY_X:{
+//                ifstream image_stream("bridge.rgb", ios::binary);
+//                image_stream.read((char *) background, sizeof(background));
+//                image_stream.close();
+//                break;
+//            }
             default:{
                 break;
             }
@@ -455,52 +479,15 @@ void keyCallback(GLFWwindow* /* window */, int key, int /* scancode */, int acti
     }
 }
 
-int main(int argc, char **argv){
+int main(int argc, char **argv) {
 
     int me, np;
-    MPI_Status status;
-
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &np);
     MPI_Comm_rank(MPI_COMM_WORLD, &me);
 
-    MPI_Datatype custom;
-
-    Chunk *myChunk = (Chunk *)malloc(sizeof(Chunk));
-
-    if(me != 0){
-        while(1){
-            MPI_Recv(myChunk, 1, MPI_BYTE, 0, 50, MPI_COMM_WORLD, &status);
-
-            cout << me << " TEST 1 ROWS" << myChunk->rows << endl;
-            if(myChunk->rows < 0){
-                MPI_Finalize();
-                return EXIT_SUCCESS;
-            }
-
-            cout << me << " TEST 2 ROWS: " << myChunk->rows << endl;
-            for(int i = 0; i < myChunk->rows; i++){
-                for(int j = 0; j < WIDTH; j++){
-                    background[i][j] = myChunk->data[i][j];
-                }
-            }
-            cout << me << " TEST 3\n";
-            double **kernel = (double **)malloc(myChunk->k * sizeof(double*));
-            for (int i = 0; i < myChunk->k; i++){
-                kernel[i] = (double *)malloc(myChunk->k * sizeof(double));
-                for(int j = 0; j < myChunk->k; j++){
-                    kernel[i][j] = myChunk->kernel[i][j];
-                }
-            }
-            cout << me << " TEST 4 \n";
-            convolution(myChunk);
-            cout << me << " TEST 5 \n";
-            MPI_Send(myChunk, 1, MPI_BYTE, 0, 50, MPI_COMM_WORLD);
-        }
-    }
-
     //GLFW initialization - controlling window and keyboard.
-    if(!glfwInit()){
+    if (!glfwInit()) {
         fprintf(stderr, "Failed to initialize GLFW\n");
         return EXIT_FAILURE;
     }
@@ -512,15 +499,16 @@ int main(int argc, char **argv){
 
     // Making a window.
     window = glfwCreateWindow(1920, 1080, "PPaP Project II", NULL, NULL);
-    if(window == NULL){
-        fprintf(stderr, "Failed to open GLFW window. The GPU is not compatible with OpenGL 3.3. Basicly, you're in trouble :)\n");
+    if (window == NULL) {
+        fprintf(stderr,
+                "Failed to open GLFW window. The GPU is not compatible with OpenGL 3.3. Basicly, you're in trouble :)\n");
         glfwTerminate();
         return EXIT_FAILURE;
     }
     glfwMakeContextCurrent(window);
 
     glewExperimental = GL_TRUE;
-    if(glewInit() != GLEW_OK){
+    if (glewInit() != GLEW_OK) {
         fprintf(stderr, "Failed to initialize GLEW.\n");
         return EXIT_FAILURE;
     }
@@ -541,14 +529,14 @@ int main(int argc, char **argv){
     glBindTexture(GL_TEXTURE_2D, TextureID);
 
     ifstream loadImg("Moon.rgba", ios::in | ios::binary);
-    loadImg.read((char *)moon, sizeof(moon));
+    loadImg.read((char *) moon, sizeof(moon));
     loadImg.close();
 
-    for(int i = 0; i < MOON_SIZE; i++){
-        for(int j = 0; j < MOON_SIZE; j++){
-            if(moon[i][j].a != 0){
+    for (int i = 0; i < MOON_SIZE; i++) {
+        for (int j = 0; j < MOON_SIZE; j++) {
+            if (moon[i][j].a != 0) {
                 double r = (rand() % 56) + 200;
-                moon[i][j].a = (unsigned char)(r);
+                moon[i][j].a = (unsigned char) (r);
             }
         }
     }
@@ -556,12 +544,12 @@ int main(int argc, char **argv){
     glfwSetKeyCallback(window, keyCallback);
 
     // Main loop where the magic happens.
-    do{
-        glClearColor(.5f,.5f,.5f,0);
+    do {
+        glClearColor(.5f, .5f, .5f, 0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        for(int i = 0; i < WIDTH; i++){
-            for(int j = 0; j < HEIGHT; j++){
+        for (int i = 0; i < WIDTH; i++) {
+            for (int j = 0; j < HEIGHT; j++) {
                 framebuffer[j][i] = background[j][i];
             }
         }
@@ -573,7 +561,7 @@ int main(int argc, char **argv){
         glfwSwapBuffers(window);
         glfwPollEvents();
 
-    }while(glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(window) == 0);
+    } while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS && glfwWindowShouldClose(window) == 0);
 
     glfwTerminate();
     MPI_Finalize();

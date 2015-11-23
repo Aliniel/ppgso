@@ -573,7 +573,7 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
         break;
       }
       case GLFW_KEY_X:{
-        ifstream image_stream("lena.rgb", ios::binary);
+        ifstream image_stream("data/lena.rgb", ios::binary);
         image_stream.read((char *) background, sizeof(background));
         image_stream.close();
         break;
@@ -818,7 +818,7 @@ int main(){
   initializeGeometry(ProgramID);
 
   // Create texture
-  auto TextureID = LoadImage("lena.rgb", SIZE, SIZE);
+  auto TextureID = LoadImage("data/lena.rgb", SIZE, SIZE);
   auto Texture = glGetUniformLocation(ProgramID, "Texture");
   glUniform1i(Texture, 0);
   glActiveTexture(GL_TEXTURE0 + 0);

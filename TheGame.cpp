@@ -14,7 +14,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "object_3d.h"
+#include "mesh.h"
 
 #define WIDTH 1920
 #define HEIGHT 1080
@@ -25,7 +25,7 @@ using namespace std;
 using namespace glm;
 
 struct GameObject{
-    Object3D object;
+    Mesh object;
 
     float x, y, z;
     mat4 matrix;
@@ -255,7 +255,7 @@ int main() {
   alduin->x = 0.0f;
   alduin->y = 0.0f;
   alduin->z = -500.0f;
-  alduin->object = Object3D(program_id, "models/alduin/alduin.obj", "models/alduin/alduin.rgb", 2048, 2048);
+  alduin->object = MeshPtr( new Mesh(program_id, "models/alduin/alduin.obj", "models/alduin/alduin.rgb"));
 //  Object3D cursor = Object3D(program_id, "cursor.obj", "lena.rgb", 512, 512);
 
   float time = 0;

@@ -91,7 +91,7 @@ find_package(MPI REQUIRED)
 set(CMAKE_CXX_COMPILE_FLAGS ${CMAKE_CXX_COMPILE_FLAGS} ${MPI_COMPILE_FLAGS})
 set(CMAKE_CXX_LINK_FLAGS ${CMAKE_CXX_LINK_FLAGS} ${MPI_LINK_FLAGS})
 include_directories($MPI_INCLUDE_PATH)
-target_link_libraries(PPaP ${MPI_LIBRARIES})
+#target_link_libraries(PPaP ${MPI_LIBRARIES})
 
 #
 # TARGETS
@@ -194,7 +194,7 @@ target_link_libraries( PPaP ${LIBRARIES} )
 install ( TARGETS PPaP DESTINATION . )
 
 # TheGame
-add_executable( TheGame TheGame.cpp object_3d.cpp tiny_obj_loader.cpp )
+add_executable( TheGame TheGame.cpp )
 target_link_libraries( TheGame ${LIBRARIES} )
 
 install ( TARGETS TheGame DESTINATION . )
