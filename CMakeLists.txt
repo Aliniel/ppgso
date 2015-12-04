@@ -79,20 +79,6 @@ add_library(libppgso STATIC
 
 target_link_libraries(libppgso ${OPENGL_LIBRARIES} ${GLEW_LIBRARIES})
 
-# Require OpenMP for PPaP projects inside:
-find_package(OpenMP)
-if (OPENMP_FOUND)
-    set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-endif()
-
-# Require MPI for this project:
-find_package(MPI REQUIRED)
-set(CMAKE_CXX_COMPILE_FLAGS ${CMAKE_CXX_COMPILE_FLAGS} ${MPI_COMPILE_FLAGS})
-set(CMAKE_CXX_LINK_FLAGS ${CMAKE_CXX_LINK_FLAGS} ${MPI_LINK_FLAGS})
-include_directories($MPI_INCLUDE_PATH)
-#target_link_libraries(PPaP ${MPI_LIBRARIES})
-
 #
 # TARGETS
 #
@@ -186,19 +172,6 @@ add_executable( ProjectOne ProjectOne.cpp )
 target_link_libraries( ProjectOne ${LIBRARIES} )
 
 install ( TARGETS ProjectOne DESTINATION . )
-
-# PaPP_p2
-add_executable( PPaP PaPP_p2.cpp )
-target_link_libraries( PPaP ${LIBRARIES} )
-
-install ( TARGETS PPaP DESTINATION . )
-
-# TheGame
-add_executable( TheGame TheGame.cpp )
-target_link_libraries( TheGame ${LIBRARIES} )
-
-install ( TARGETS TheGame DESTINATION . )
-install ( FILES TheGameVert.glsl TheGameFrag.glsl sphere.obj sphere.rgb cursor.obj DESTINATION . )
 
 # ADD YOUR PROJECT HERE
 #set(MY_PROJECT_SRC src/my_project/my_project.cpp)
