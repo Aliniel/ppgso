@@ -167,11 +167,17 @@ add_executable(gl_scene ${GL_SCENE_SRC} ${GL_SCENE_SHADERS})
 target_link_libraries(gl_scene ${LIBRARIES})
 install(TARGETS gl_scene DESTINATION .)
 
-# ProjectOne
-add_executable( ProjectOne ProjectOne.cpp )
-target_link_libraries( ProjectOne ${LIBRARIES} )
-
-install ( TARGETS ProjectOne DESTINATION . )
+# myGame
+set(myGame_SRC
+        src/myGame/myGame.cpp
+        src/myGame/camera.cpp
+        src/myGame/object.cpp
+        src/myGame/player.cpp
+        src/myGame/scene.cpp src/myGame/ground.cpp src/myGame/ground.h)
+generate_shaders(myGame_SHADERS src/myGame/object_frag_shader.glsl src/myGame/object_vert_shader.glsl)
+add_executable(myGame ${myGame_SRC} ${myGame_SHADERS})
+target_link_libraries(myGame ${LIBRARIES})
+install (TARGETS myGame DESTINATION .)
 
 # ADD YOUR PROJECT HERE
 #set(MY_PROJECT_SRC src/my_project/my_project.cpp)
