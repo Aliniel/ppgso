@@ -1,11 +1,8 @@
 #include "ground.h"
 #include "scene.h"
-//#include "asteroid.h"
-//#include "projectile.h"
-//#include "explosion.h"
-
 #include "object_frag_shader.h"
 #include "object_vert_shader.h"
+#include "generator.h"
 
 #include <GLFW/glfw3.h>
 
@@ -13,7 +10,8 @@ Ground::Ground() {
   rotation.x = -PI/2.0f;
   scale.x *= 10.0f;
   scale.y *= 10.0f;
-  scale.z *= 2.0f;
+  timeToDetonation = 100.0f;
+//  scale.z *= 2.0f;
 
   // Initialize static resources if needed
   if (!shader) shader = ShaderPtr(new Shader{object_vert_shader, object_frag_shader});
@@ -27,12 +25,21 @@ Ground::~Ground() {
 }
 
 bool Ground::Update(Scene &scene, float dt) {
+  if(selfDestruct){
+    timeToDetonation -= dt;
+    if(timeToDetonation < 0.0f){
+      for( auto obj : scene.objects ){
+        // Giving Generator signal to generate another tile.
+        if (obj.get() == this)
+          continue;
 
-  if(scene.keyboard[GLFW_KEY_U]) {
-    position.y += 10.0f * dt;
-  }
-  if(scene.keyboard[GLFW_KEY_J]) {
-    position.y -= 10.0f * dt;
+        auto generator = std::dynamic_pointer_cast<Generator>(obj);
+        if (!generator) continue;
+
+        generator->numberOfTiles --;
+      }
+      return false;
+    }
   }
 
   GenerateModelMatrix();

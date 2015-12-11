@@ -18,6 +18,7 @@
 #include "camera.h"
 #include "player.h"
 #include "ground.h"
+#include "generator.h"
 
 const unsigned int WIDTH = 1920;
 const unsigned int HEIGTH = 1080;
@@ -33,13 +34,25 @@ void InitializeScene() {
   auto camera = CameraPtr(new Camera{ 60.0f, 16.0f/9.0f, 0.1f, 100.0f});
   scene.camera = camera;
 
-  for(int i = 0; i < 5; i++) {
-    // Adding ground
-    auto ground = GroundPtr(new Ground{});
-    ground->position.y = (float)i * 5.0f;
-    ground->position.z = (float)i * 2.0f * ground->scale.y;
-    scene.objects.push_back(ground);
-  }
+  // STarting point for the player.
+  auto ground = GroundPtr(new Ground{});
+  ground->position.y = 0;
+  ground->position.z = 0;
+  ground->timeToDetonation = 100.0f;
+  scene.objects.push_back(ground);
+
+  auto generator = GeneratorPtr(new Generator{});
+  generator->tileScale = ground->scale.y;
+  generator->position.z = 5 * 2.0f * ground->scale.y;
+  scene.objects.push_back(generator);
+
+//  for(int i = 0; i < 5; i++) {
+//    // Adding ground
+//    auto ground = GroundPtr(new Ground{});
+//    ground->position.y = (float)i * 5.0f;
+//    ground->position.z = (float)i * 2.0f * ground->scale.y;
+//    scene.objects.push_back(ground);
+//  }
 
 //  // Add space background
 //  auto space = SpacePtr(new Space{});
@@ -159,8 +172,8 @@ int main() {
 
     glfwGetCursorPos(window, &scene.mouse.x, &scene.mouse.y);
 
-    scene.camera->pitch -= scene.camera->mouseSpeed * (HEIGTH/2.0f - scene.mouse.y) * dt;
-    scene.camera->player->rotate(WIDTH/2.0f - scene.mouse.x);
+    scene.camera->pitch -= scene.camera->mouseSpeed * (HEIGTH/2.0f - (float)scene.mouse.y) * dt;
+    scene.camera->player->rotate(WIDTH/2.0f - (float)scene.mouse.x);
 
     glfwSetCursorPos(window, WIDTH/2.0f, HEIGTH/2.0f);
 

@@ -54,11 +54,11 @@ bool Player::Update(Scene &scene, float dt) {
   if(scene.keyboard[GLFW_KEY_W]) {
     currentMove = movementSpeed;
 //    position.z -= movementSpeed * dt;
-    rotation.x += rotationSpeed * dt;
+    rotation.x += 1.5f * rotationSpeed * dt;
   } else if(scene.keyboard[GLFW_KEY_S]) {
     currentMove = -movementSpeed;
 //    position.z += movementSpeed * dt;
-    rotation.x -= rotationSpeed * dt;
+    rotation.x -= 1.5f * rotationSpeed * dt;
   }
   else{
     currentMove = 0;
@@ -90,6 +90,14 @@ bool Player::Update(Scene &scene, float dt) {
       if (abs(position.x - ground->position.x) < ground->scale.x &&
           abs(position.z - ground->position.z) < ground->scale.y) {
         groundY = ground->position.y;
+
+        // If I stand on the tile, it will start to self destruct.
+        if(position.y == groundY + scale.y){
+          if(!ground->selfDestruct) {
+            ground->timeToDetonation = 2.0f;
+            ground->selfDestruct = true;
+          }
+        }
         break;
       }
       else {
@@ -112,9 +120,7 @@ bool Player::Update(Scene &scene, float dt) {
         }
       }
     }
-
   }
-
     // Jumping - going up.
   else{
     if(position.y < maxHeight + scale.y)

@@ -173,7 +173,11 @@ set(myGame_SRC
         src/myGame/camera.cpp
         src/myGame/object.cpp
         src/myGame/player.cpp
-        src/myGame/scene.cpp src/myGame/ground.cpp src/myGame/ground.h)
+        src/myGame/scene.cpp
+        src/myGame/ground.cpp
+        src/myGame/ground.h
+        src/myGame/generator.cpp
+        src/myGame/generator.h)
 generate_shaders(myGame_SHADERS src/myGame/object_frag_shader.glsl src/myGame/object_vert_shader.glsl)
 add_executable(myGame ${myGame_SRC} ${myGame_SHADERS})
 target_link_libraries(myGame ${LIBRARIES})
