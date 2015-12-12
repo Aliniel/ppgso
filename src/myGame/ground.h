@@ -6,6 +6,7 @@
 #include <mesh.h>
 
 #include "object.h"
+#include "landMine.h"
 
 // Simple object representing the player
 // Reads keyboard status and manipulates its own position
@@ -20,8 +21,11 @@ public:
 
   float timeToDetonation;
   bool selfDestruct = false;
+  Landmine mines[3];
 
 private:
+  bool minesGenerated = false;
+
   // Static resources (Shared between instances)
   static MeshPtr mesh;
   static ShaderPtr shader;
