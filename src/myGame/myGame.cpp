@@ -31,7 +31,7 @@ void InitializeScene() {
   scene.objects.clear();
 
   // Create a camera
-  auto camera = CameraPtr(new Camera{ 60.0f, 16.0f/9.0f, 0.1f, 100.0f});
+  auto camera = CameraPtr(new Camera{ 60.0f, 16.0f/9.0f, 0.1f, 150.0f});
   scene.camera = camera;
 
   // STarting point for the player.

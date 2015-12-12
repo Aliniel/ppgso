@@ -7,24 +7,15 @@ bool Generator::Update(Scene &scene, float dt) {
   // Generator will be in charge of keeping 5 tiles in the game.
   while(numberOfTiles != maxTiles){
     auto ground = GroundPtr(new Ground());
-    ground->position.x = Rand(lastTilePosition.x - 2.5f * tileScale, lastTilePosition.x + 2.5f * tileScale);
-    ground->position.y = Rand(lastTilePosition.y - 5, lastTilePosition.y + 5);
-    ground->position.z = Rand(lastTilePosition.z + 2.0f * tileScale, lastTilePosition.z + 2.5f * tileScale);
+    ground->position.x = Rand(lastTilePosition.x - 3.0f * tileScale, lastTilePosition.x + 3.0f * tileScale);
+    ground->position.y = Rand(lastTilePosition.y - 15.0f, lastTilePosition.y + 5.0f);
+    ground->position.z = Rand(lastTilePosition.z + 3.0f * tileScale, lastTilePosition.z + 3.0f * tileScale);
     ground->timeToDetonation = 100.0f;
     scene.objects.push_back(ground);
 
     lastTilePosition = ground->position;
     numberOfTiles ++;
   }
-
-  // Add object to scene when time reaches certain level
-//  if (time > .3) {
-//    auto obj = AsteroidPtr(new Asteroid());
-//    obj->position = this->position;
-//    obj->position.x += Rand(-20, 20);
-//    scene.objects.push_back(obj);
-//    time = 0;
-//  }
 
   return true;
 }

@@ -34,30 +34,69 @@ void Player::rotate(float xpos){
 }
 
 bool Player::Update(Scene &scene, float dt) {
-  float groundY;
+//  position.x ++;
+//  position.z ++;
+  float groundX, groundY, groundZ;
+  float groundScale;
   float distance, dx, dz;
 
-  // Keyboard controls
-//  if(scene.keyboard[GLFW_KEY_LEFT]) {
-////    currentRotation = rotationSpeed;
-////    position.x -= movementSpeed * dt;
-////    rotation.y += rotationSpeed * dt;
-//  } else if(scene.keyboard[GLFW_KEY_RIGHT]) {
-////    currentRotation = -rotationSpeed;
-////    position.x += movementSpeed * dt;
-////    rotation.y -= rotationSpeed * dt;
-//  }
-//  else{
-//    currentRotation = 0;
-//  }
+  for (auto obj : scene.objects) {
+    // Ignore self in scene
+    if (obj.get() == this)
+      continue;
+
+    // Collision detection
+    auto ground = std::dynamic_pointer_cast<Ground>(obj);
+    auto landmine = std::dynamic_pointer_cast<Landmine>(obj);
+
+    if (ground){
+      // Find the platform I'm over or under.
+      if (abs(position.x - ground->position.x) < ground->scale.x &&
+          abs(position.z - ground->position.z) < ground->scale.y) {
+        if (position.y < ground->position.y) {
+          rip = true;
+        }
+        groundX = ground->position.x;
+        groundY = ground->position.y;
+        groundZ = ground->position.z;
+        groundScale = ground->scale.x;
+
+        // If I stand on the tile, it will start to self destruct.
+        if (position.y - 0.5f * scale.y == groundY) {
+          if (!ground->selfDestruct) {
+            ground->timeToDetonation = 2.0f;
+//            ground->selfDestruct = true;
+          }
+        }
+
+        // Check if I stepped on any landmines.
+        for(int i = 0; i < 3; i ++){
+          if(glm::distance(position, ground->mines[i].position) < 0.5f * scale.y + 0.5 * ground->mines[i].scale.y){
+            jumpSpeed = 3 * jumpPower;
+          }
+        }
+        break;
+      }
+      else {
+        groundY = -50.0f;
+      }
+    }
+  }
+
+  jumpSpeed += gravity * dt;
+  position.y += jumpSpeed * dt;
+
+  if(position.y - 0.5f * scale.y < groundY && !rip) {
+    jumpSpeed = 0;
+    position.y = groundY + 0.5f * scale.y;
+    inAir = false;
+  }
 
   if(scene.keyboard[GLFW_KEY_W]) {
     currentMove = movementSpeed;
-//    position.z -= movementSpeed * dt;
     rotation.x += 1.5f * rotationSpeed * dt;
   } else if(scene.keyboard[GLFW_KEY_S]) {
     currentMove = -movementSpeed;
-//    position.z += movementSpeed * dt;
     rotation.x -= 1.5f * rotationSpeed * dt;
   }
   else{
@@ -70,77 +109,19 @@ bool Player::Update(Scene &scene, float dt) {
   dz = distance * (float)cos(rotation.y * PI/180.0f);
   position += glm::vec3(dx, 0, dz);
 
-  if(scene.keyboard[GLFW_KEY_SPACE] && !jumped) {
-    jumping = true;
-    jumped = true;
-  }
-
-  // Falling down.
-  if(!jumping) {
-    for (auto obj : scene.objects) {
-      // Ignore self in scene
-      if (obj.get() == this)
-        continue;
-
-      // We only need to collide with asteroids, ignore other objects
-      auto ground = std::dynamic_pointer_cast<Ground>(obj);
-      if (!ground) continue;
-
-      // Find the platform I'm over or under.
-      if (abs(position.x - ground->position.x) < ground->scale.x &&
-          abs(position.z - ground->position.z) < ground->scale.y) {
-        groundY = ground->position.y;
-
-        // If I stand on the tile, it will start to self destruct.
-        if(position.y == groundY + scale.y){
-          if(!ground->selfDestruct) {
-            ground->timeToDetonation = 2.0f;
-            ground->selfDestruct = true;
-          }
-        }
-        break;
-      }
-      else {
-        groundY = -50.0f;
-      }
-    }
-
-    if (position.y - scale.y != groundY) {
-      if(position.y - scale.y < groundY) {
-        position.y -= jumpSpeed * dt;
-      }
-      else{
-        position.y -= jumpSpeed * dt;
-        if(position.y - scale.y < groundY) {
-          position.y = groundY + scale.y;
-          if (jumped) {
-            jumped = false;
-            maxHeight = position.y - scale.y + jumpHeigth;
-          }
-        }
-      }
+  if(scene.keyboard[GLFW_KEY_SPACE]) {
+    if(!inAir) {
+      jumpSpeed = jumpPower;
+      inAir = true;
     }
   }
-    // Jumping - going up.
-  else{
-    if(position.y < maxHeight + scale.y)
-      position.y += jumpSpeed * dt;
-    if(position.y > maxHeight + scale.y)
-      position.y = maxHeight + scale.y;
-    if(position.y == maxHeight + scale.y)
-      jumping = false;
-  }
-
 
   modelMatrix =
           glm::translate(glm::mat4(1.0f), position)
-//          * glm::orientate4(rotation)
-//          * glm::rotate(glm::mat4(1.0f), rotation.x * PI/180, glm::vec3(1.0f, 0, 0))
           * glm::rotate(glm::mat4(1.0f), rotation.y * PI/180.0f, glm::vec3(0, 1.0f, 0))
             * glm::rotate(glm::mat4(1.0f), rotation.x * PI/180.0f, glm::vec3(1.0f, 0, 0))
           * glm::scale(glm::mat4(1.0f), scale);
 
-//  GenerateModelMatrix();
   return true;
 }
 

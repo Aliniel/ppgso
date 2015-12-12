@@ -21,13 +21,11 @@ public:
   void Render(Scene &scene) override;
 
 private:
-//    glm::vec3 rotationAxis = glm::vec3(0,0,0);
-
     glm::mat4 orientation = glm::orientate4(position);
 
     // Movement
-    char movementSpeed = 15.0f;
-    char currentMove = 0;
+    float movementSpeed = 15.0f;
+    float currentMove = 0;
 
     // Rotation
     float rotationSpeed = 250.0f;
@@ -37,11 +35,13 @@ private:
     float angle = 0;
 
     // Jumping
-    bool jumping = false;
-    bool jumped = false;
-    float jumpSpeed = 20.0f;
-    float jumpHeigth = 8.0f;
-    float maxHeight = position.y + jumpHeigth;
+    float gravity = -50.f;
+    float jumpPower = 30.0f;
+    float jumpSpeed = 0;
+    bool inAir = false;
+
+    // Should I die?
+    bool rip = false;
 
   // Static resources (Shared between instances)
   static MeshPtr mesh;
