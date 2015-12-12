@@ -177,8 +177,13 @@ set(myGame_SRC
         src/myGame/ground.cpp
         src/myGame/ground.h
         src/myGame/generator.cpp
-        src/myGame/generator.h src/myGame/landMine.cpp src/myGame/landMine.h)
-generate_shaders(myGame_SHADERS src/myGame/object_frag_shader.glsl src/myGame/object_vert_shader.glsl)
+        src/myGame/generator.h
+        src/myGame/landMine.cpp
+        src/myGame/landMine.h
+        src/myGame/explosion.cpp
+        src/myGame/explosion.h)
+generate_shaders(myGame_SHADERS src/myGame/object_frag_shader.glsl src/myGame/object_vert_shader.glsl
+        src/myGame/explosion_frag_shader.glsl src/myGame/explosion_vert_shader.glsl)
 add_executable(myGame ${myGame_SRC} ${myGame_SHADERS})
 target_link_libraries(myGame ${LIBRARIES})
 install (TARGETS myGame DESTINATION .)

@@ -31,7 +31,7 @@ void InitializeScene() {
   scene.objects.clear();
 
   // Create a camera
-  auto camera = CameraPtr(new Camera{ 60.0f, 16.0f/9.0f, 0.1f, 150.0f});
+  auto camera = CameraPtr(new Camera{ 60.0f, 16.0f/9.0f, 0.1f, 100.0f});
   scene.camera = camera;
 
   // STarting point for the player.
@@ -45,23 +45,6 @@ void InitializeScene() {
   generator->tileScale = ground->scale.y;
   generator->position.z = 5 * 2.0f * ground->scale.y;
   scene.objects.push_back(generator);
-
-//  for(int i = 0; i < 5; i++) {
-//    // Adding ground
-//    auto ground = GroundPtr(new Ground{});
-//    ground->position.y = (float)i * 5.0f;
-//    ground->position.z = (float)i * 2.0f * ground->scale.y;
-//    scene.objects.push_back(ground);
-//  }
-
-//  // Add space background
-//  auto space = SpacePtr(new Space{});
-//  scene.objects.push_back(space);
-
-//  // Add generator to scene
-//  auto generator = GeneratorPtr(new Generator{});
-//  generator->position.y = 10.0f;
-//  scene.objects.push_back(generator);
 
   // Add player to the scene
   auto player = PlayerPtr(new Player{});
@@ -82,12 +65,6 @@ void OnKeyPress(GLFWwindow* /* window */, int key, int /* scancode */, int actio
 
 // Mouse move event handler
 void OnMouseMove(GLFWwindow* window, double xpos, double ypos) {
-//  scene.mouse.x = xpos;
-//  scene.mouse.y = ypos;
-//
-//  scene.camera->pitch -= scene.camera->mouseSpeed * (HEIGTH/2.0f - ypos) * dt;
-//  scene.camera->player->rotate(WIDTH/2.0f - xpos);
-//  glfwSetCursorPos(window, WIDTH/2, HEIGTH/2);
 }
 
 // Mouse scroll event handler

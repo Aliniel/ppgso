@@ -18,6 +18,7 @@ public:
     bool Update(Scene &scene, float dt) override;
     void Render(Scene &scene) override;
 
+    bool destroyed = false;
 private:
     // Static resources (Shared between instances)
     static MeshPtr mesh;

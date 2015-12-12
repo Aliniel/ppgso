@@ -20,6 +20,8 @@ public:
   void Update();
 
   Player *player;
+  bool dead = false;
+  glm::vec3 lookAtExplosion;
 
   float mouseSpeed = 50.0f;
 

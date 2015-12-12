@@ -17,9 +17,6 @@ Camera::~Camera() {
 }
 
 void Camera::Update() {
-//  pitch += dt * float(WIDTH/2 - scene.mouse.x);
-//  jaw += dt * float(HEIGTH/2 - scene.mouse.y);
-
   // Calculating horizontal and vertical distances from player:
   float horizontalDistance = distance * (float)cos(pitch * PI/180.0f);
   float verticalDistance = distance * (float)sin(pitch * PI/180.0f);
@@ -35,23 +32,10 @@ void Camera::Update() {
   else if(pitch > 80.0f){
     pitch = 80.0f;
   }
-//  forward = glm::vec3(
-//          cos(jaw) * sin(pitch),
-//          sin(jaw),
-//          cos(jaw) * cos(pitch)
-//  );
-//  right = glm::vec3(
-//          sin(pitch - PI / 2.0f),
-//          0,
-//          cos(pitch - PI / 2)
-//  );
-//  up = glm::cross(right, forward);
-
-//  position = glm::vec3(
-////          player->position.x -
-//  );
-
-//  viewMatrix = glm::lookAt(position, position + forward, up);
-  viewMatrix = glm::lookAt(position, player->position, up);
-//  viewMatrix = glm::lookAt(position, glm::vec3(0,0,0), up);
+  if(dead){
+    viewMatrix = glm::lookAt(lookAtExplosion - glm::vec3(10.0f, 10.0f, 10.0f), lookAtExplosion, up);
+  }
+  else {
+    viewMatrix = glm::lookAt(position, player->position, up);
+  }
 }

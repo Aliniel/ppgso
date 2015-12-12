@@ -20,6 +20,7 @@ public:
   bool Update(Scene &scene, float dt) override;
   void Render(Scene &scene) override;
 
+  bool bombed = false;
 private:
     glm::mat4 orientation = glm::orientate4(position);
 

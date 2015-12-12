@@ -4,6 +4,7 @@
 #include "object_frag_shader.h"
 #include "object_vert_shader.h"
 #include "ground.h"
+#include "explosion.h"
 
 #include <GLFW/glfw3.h>
 
@@ -34,10 +35,18 @@ void Player::rotate(float xpos){
 }
 
 bool Player::Update(Scene &scene, float dt) {
-//  position.x ++;
-//  position.z ++;
-  float groundX, groundY, groundZ;
-  float groundScale;
+  if(position.y < -40.0f){
+    auto explosion = ExplosionPtr(new Explosion{});
+    explosion->position = position;
+    explosion->scale = scale;
+    scene.objects.push_back(explosion);
+
+    scene.camera->dead = true;
+    scene.camera->lookAtExplosion = explosion->position;
+    return false;
+  }
+
+  float groundY;
   float distance, dx, dz;
 
   for (auto obj : scene.objects) {
@@ -56,23 +65,28 @@ bool Player::Update(Scene &scene, float dt) {
         if (position.y < ground->position.y) {
           rip = true;
         }
-        groundX = ground->position.x;
         groundY = ground->position.y;
-        groundZ = ground->position.z;
-        groundScale = ground->scale.x;
 
         // If I stand on the tile, it will start to self destruct.
         if (position.y - 0.5f * scale.y == groundY) {
           if (!ground->selfDestruct) {
             ground->timeToDetonation = 2.0f;
-//            ground->selfDestruct = true;
+            ground->selfDestruct = true;
           }
         }
 
         // Check if I stepped on any landmines.
         for(int i = 0; i < 3; i ++){
-          if(glm::distance(position, ground->mines[i].position) < 0.5f * scale.y + 0.5 * ground->mines[i].scale.y){
-            jumpSpeed = 3 * jumpPower;
+          if(glm::distance(position, ground->mines[i].position) < 0.5f * scale.y + 0.5 * ground->mines[i].scale.y &&
+                  !ground->mines[i].destroyed){
+            jumpSpeed = 0.5f * jumpPower;
+            inAir = true;
+            bombed = true;
+
+            auto explosion = ExplosionPtr(new Explosion{});
+            explosion->position = ground->mines[i].position;
+            ground->mines[i].destroyed = true;
+            scene.objects.push_back(explosion);
           }
         }
         break;
@@ -90,12 +104,13 @@ bool Player::Update(Scene &scene, float dt) {
     jumpSpeed = 0;
     position.y = groundY + 0.5f * scale.y;
     inAir = false;
+    bombed = false;
   }
 
-  if(scene.keyboard[GLFW_KEY_W]) {
+  if(scene.keyboard[GLFW_KEY_W] && !bombed) {
     currentMove = movementSpeed;
     rotation.x += 1.5f * rotationSpeed * dt;
-  } else if(scene.keyboard[GLFW_KEY_S]) {
+  } else if(scene.keyboard[GLFW_KEY_S] && !bombed) {
     currentMove = -movementSpeed;
     rotation.x -= 1.5f * rotationSpeed * dt;
   }

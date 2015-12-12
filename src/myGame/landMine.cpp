@@ -18,13 +18,14 @@ Landmine::~Landmine() {
 }
 
 bool Landmine::Update(Scene &scene, float dt) {
-
-
   GenerateModelMatrix();
   return true;
 }
 
 void Landmine::Render(Scene &scene) {
+  if(destroyed){
+    return;
+  }
   shader->Use();
 
   // use camera
