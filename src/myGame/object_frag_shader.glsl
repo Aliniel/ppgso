@@ -25,12 +25,12 @@ void main() {
   vec4 diffuseColor = 30.0f * diff * lightColor / pow(distance, 1.75f);
 
   // Speculiar light
-//  float specularStrength = 0.5f;
-//  vec3 viewDir = normalize(viewPosition - FragPos);
-//  vec3 reflectDir = reflect(-lightDir, vec3(normal).xyz);
-//  float spec = pow(max(dot(viewDir, reflectDir), 0.0f), 32);
-//  vec4 specularColor = specularStrength * spec * lightColor;
+  float specularStrength = 0.5f;
+  vec3 viewDir = normalize(viewPosition - FragPos);
+  vec3 reflectDir = reflect(-lightDirection, vec3(normal));
+  float spec = pow(max(dot(viewDir, reflectDir), 0.0f), 16);
+  vec4 specularColor = specularStrength * spec * lightColor;
 
   // Lookup the color in Texture on coordinates given by fragTexCoord
-  FragmentColor = texture(Texture, FragTexCoord) * (diffuseColor + ambientColor/* + specularColor*/);
+  FragmentColor = texture(Texture, FragTexCoord) * (diffuseColor + ambientColor + specularColor);
 }

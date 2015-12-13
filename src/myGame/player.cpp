@@ -100,9 +100,11 @@ bool Player::Update(Scene &scene, float dt) {
   position.y += jumpSpeed * dt;
 
   if(position.y - 0.5f * scale.y < groundY && !rip) {
-    jumpSpeed = 0;
+    jumpSpeed = 0.5 * abs(jumpSpeed);
     position.y = groundY + 0.5f * scale.y;
-    inAir = false;
+    if(jumpSpeed < 0.25f * jumpPower){
+      inAir = false;
+    }
     bombed = false;
   }
 
@@ -152,7 +154,7 @@ void Player::Render(Scene &scene) {
 
   // Player will be the source of light.
   shader->SetVector(glm::vec3(position.x, position.y + 5.0f, position.z), "lightPosition");
-//  shader->SetVector(scene.camera->position, "viewPosition");
+  shader->SetVector(scene.camera->position, "viewPosition");
 
   mesh->Render();
 }

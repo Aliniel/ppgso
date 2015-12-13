@@ -68,7 +68,7 @@ void Ground::Render(Scene &scene) {
   shader->SetTexture(texture, "Texture");
 
   shader->SetVector(glm::vec3(scene.camera->player->position.x, scene.camera->player->position.y + 5.0f, scene.camera->player->position.z), "lightPosition");
-//  shader->SetVector(scene.camera->position, "viewPosition");
+  shader->SetVector(scene.camera->position, "viewPosition");
 
   mesh->Render();
 
