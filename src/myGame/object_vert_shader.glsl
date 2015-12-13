@@ -8,7 +8,7 @@ in vec3 Normal;
 out vec2 FragTexCoord;
 out vec4 normal;
 out vec3 FragPos;
-out vec3 lightPosition;
+//out vec3 lightPosition;
 
 // Matrices as program attributes
 uniform mat4 ProjectionMatrix;

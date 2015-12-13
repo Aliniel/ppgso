@@ -70,6 +70,16 @@ void Ground::Render(Scene &scene) {
   shader->SetVector(glm::vec3(scene.camera->player->position.x, scene.camera->player->position.y + 5.0f, scene.camera->player->position.z), "lightPosition");
   shader->SetVector(scene.camera->position, "viewPosition");
 
+  if(!mines[0].destroyed) {
+    shader->SetVector(glm::vec3(mines[0].position.x, mines[0].position.y + 5.0f, mines[0].position.z), "mine1");
+  }
+  if(!mines[1].destroyed) {
+    shader->SetVector(glm::vec3(mines[1].position.x, mines[1].position.y + 5.0f, mines[1].position.z), "mine2");
+  }
+  if(!mines[2].destroyed) {
+    shader->SetVector(glm::vec3(mines[2].position.x, mines[2].position.y + 5.0f, mines[2].position.z), "mine3");
+  }
+
   mesh->Render();
 
   for(int i = 0; i < 3; i++){

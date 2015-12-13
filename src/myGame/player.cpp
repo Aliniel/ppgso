@@ -70,7 +70,7 @@ bool Player::Update(Scene &scene, float dt) {
         if (position.y - 0.5f * scale.y == groundY) {
           if (!ground->selfDestruct) {
             ground->timeToDetonation = 2.0f;
-//            ground->selfDestruct = true;
+            ground->selfDestruct = true;
           }
         }
 
