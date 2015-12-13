@@ -13,6 +13,10 @@ bool Generator::Update(Scene &scene, float dt) {
     ground->timeToDetonation = 100.0f;
     scene.objects.push_back(ground);
 
+    if(ground->position.y < -35.0f){
+      ground->position.y = lastTilePosition.y + 5.0f;
+    }
+
     lastTilePosition = ground->position;
     numberOfTiles ++;
   }

@@ -13,12 +13,14 @@
 
 #include <GL/glew.h>
 #include <GLFW/glfw3.h>
+#include <object_frag_shader.h>
 
 #include "scene.h"
 #include "camera.h"
 #include "player.h"
 #include "ground.h"
 #include "generator.h"
+#include "lava.h"
 
 const unsigned int WIDTH = 1920;
 const unsigned int HEIGTH = 1080;
@@ -31,8 +33,11 @@ void InitializeScene() {
   scene.objects.clear();
 
   // Create a camera
-  auto camera = CameraPtr(new Camera{ 60.0f, 16.0f/9.0f, 0.1f, 100.0f});
+  auto camera = CameraPtr(new Camera{ 60.0f, 16.0f/9.0f, 0.1f, 150.0f});
   scene.camera = camera;
+
+  auto lava = LavaPtr(new Lava{});
+  scene.objects.push_back(lava);
 
   // STarting point for the player.
   auto ground = GroundPtr(new Ground{});
@@ -51,6 +56,7 @@ void InitializeScene() {
   player->position.y = 20.0f;
   scene.objects.push_back(player);
   camera->player = player.get();
+  lava->player = player.get();
 }
 
 // Keyboard press event handler
@@ -140,13 +146,12 @@ int main() {
     dt = (float)glfwGetTime() - time;
     time = (float)glfwGetTime();
 
-//    glfwSetCursorPos(window, WIDTH/2, HEIGTH/2);
-
     // Set gray background
     glClearColor(.5f,.5f,.5f,0);
     // Clear depth and color buffers
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // Controlling camera with mouse.
     glfwGetCursorPos(window, &scene.mouse.x, &scene.mouse.y);
 
     scene.camera->pitch -= scene.camera->mouseSpeed * (HEIGTH/2.0f - (float)scene.mouse.y) * dt;

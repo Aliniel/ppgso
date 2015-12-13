@@ -10,7 +10,6 @@
 
 Player::Player() {
   // Scale the default model
-//  rotation.x = -PI/2;
   scale *= 3.0f;
 
   // Initialize static resources if needed
@@ -71,7 +70,7 @@ bool Player::Update(Scene &scene, float dt) {
         if (position.y - 0.5f * scale.y == groundY) {
           if (!ground->selfDestruct) {
             ground->timeToDetonation = 2.0f;
-            ground->selfDestruct = true;
+//            ground->selfDestruct = true;
           }
         }
 
@@ -134,7 +133,7 @@ bool Player::Update(Scene &scene, float dt) {
   modelMatrix =
           glm::translate(glm::mat4(1.0f), position)
           * glm::rotate(glm::mat4(1.0f), rotation.y * PI/180.0f, glm::vec3(0, 1.0f, 0))
-            * glm::rotate(glm::mat4(1.0f), rotation.x * PI/180.0f, glm::vec3(1.0f, 0, 0))
+          * glm::rotate(glm::mat4(1.0f), rotation.x * PI/180.0f, glm::vec3(1.0f, 0, 0))
           * glm::scale(glm::mat4(1.0f), scale);
 
   return true;
@@ -150,6 +149,11 @@ void Player::Render(Scene &scene) {
   // render mesh
   shader->SetMatrix(modelMatrix, "ModelMatrix");
   shader->SetTexture(texture, "Texture");
+
+  // Player will be the source of light.
+  shader->SetVector(glm::vec3(position.x, position.y + 5.0f, position.z), "lightPosition");
+//  shader->SetVector(scene.camera->position, "viewPosition");
+
   mesh->Render();
 }
 

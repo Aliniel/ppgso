@@ -21,6 +21,9 @@ public:
   void Render(Scene &scene) override;
 
   bool bombed = false;
+
+    // Should I die?
+    bool rip = false;
 private:
     glm::mat4 orientation = glm::orientate4(position);
 
@@ -40,9 +43,6 @@ private:
     float jumpPower = 30.0f;
     float jumpSpeed = 0;
     bool inAir = false;
-
-    // Should I die?
-    bool rip = false;
 
   // Static resources (Shared between instances)
   static MeshPtr mesh;

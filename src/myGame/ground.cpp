@@ -15,7 +15,6 @@ Ground::Ground() {
   // Initialize static resources if needed
   if (!shader) shader = ShaderPtr(new Shader{object_vert_shader, object_frag_shader});
   if (!texture) texture = TexturePtr(new Texture{"ground/ground.rgb", 1024, 1024});
-//  if (!mesh) mesh = MeshPtr(new Mesh{shader, "fy_snow/fy_snow/fy_snow.obj"});
   if (!mesh) mesh = MeshPtr(new Mesh{shader, "ground/quad.obj"});
 }
 
@@ -67,6 +66,10 @@ void Ground::Render(Scene &scene) {
   // render mesh
   shader->SetMatrix(modelMatrix, "ModelMatrix");
   shader->SetTexture(texture, "Texture");
+
+  shader->SetVector(glm::vec3(scene.camera->player->position.x, scene.camera->player->position.y + 5.0f, scene.camera->player->position.z), "lightPosition");
+//  shader->SetVector(scene.camera->position, "viewPosition");
+
   mesh->Render();
 
   for(int i = 0; i < 3; i++){

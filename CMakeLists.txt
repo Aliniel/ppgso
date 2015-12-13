@@ -181,7 +181,7 @@ set(myGame_SRC
         src/myGame/landMine.cpp
         src/myGame/landMine.h
         src/myGame/explosion.cpp
-        src/myGame/explosion.h)
+        src/myGame/explosion.h src/myGame/lava.cpp src/myGame/lava.h)
 generate_shaders(myGame_SHADERS src/myGame/object_frag_shader.glsl src/myGame/object_vert_shader.glsl
         src/myGame/explosion_frag_shader.glsl src/myGame/explosion_vert_shader.glsl)
 add_executable(myGame ${myGame_SRC} ${myGame_SHADERS})

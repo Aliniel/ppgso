@@ -1,31 +1,34 @@
+#include "scene.h"
 #include "object_frag_shader.h"
 #include "object_vert_shader.h"
-#include "landMine.h"
-#include "scene.h"
+#include "lava.h"
 
 #include <GLFW/glfw3.h>
 
-Landmine::Landmine() {
+Lava::Lava() {
+  rotation.x = -PI/2.0f;
+  scale.x *= 150.0f;
+  scale.y *= 150.0f;
+  position.y = -40.0f;
 
   // Initialize static resources if needed
   if (!shader) shader = ShaderPtr(new Shader{object_vert_shader, object_frag_shader});
-  if (!texture) texture = TexturePtr(new Texture{"landmine/landmine.rgb", 1000, 800});
-  if (!mesh) mesh = MeshPtr(new Mesh{shader, "player/sphere.obj"});
+  if (!texture) texture = TexturePtr(new Texture{"lava/lava.rgb", 1024, 1024});
+  if (!mesh) mesh = MeshPtr(new Mesh{shader, "ground/quad.obj"});
 }
 
-
-Landmine::~Landmine() {
+Lava::~Lava() {
 }
 
-bool Landmine::Update(Scene &scene, float dt) {
+bool Lava::Update(Scene &scene, float dt) {
+  position.x = player->position.x;
+  position.z = player->position.z;
+
   GenerateModelMatrix();
   return true;
 }
 
-void Landmine::Render(Scene &scene) {
-  if(destroyed){
-    return;
-  }
+void Lava::Render(Scene &scene) {
   shader->Use();
 
   // use camera
@@ -35,10 +38,11 @@ void Landmine::Render(Scene &scene) {
   // render mesh
   shader->SetMatrix(modelMatrix, "ModelMatrix");
   shader->SetTexture(texture, "Texture");
+
   mesh->Render();
 }
 
 // shared resources
-MeshPtr Landmine::mesh;
-ShaderPtr Landmine::shader;
-TexturePtr Landmine::texture;
+MeshPtr Lava::mesh;
+ShaderPtr Lava::shader;
+TexturePtr Lava::texture;
