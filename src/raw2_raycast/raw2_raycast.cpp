@@ -4,19 +4,19 @@
 // - Computes collisions with scene geometry
 // - For each collision point calculates lighting
 
+#include <chrono>
 #include <future>
 #include <iostream>
 #include <ppgso/ppgso.h>
-#include <thread>
+
+#include "../pt_pathtracer/material.h"
+#include "../pt_pathtracer/ray.h"
+#include "../pt_pathtracer/shape.h"
+#include "../pt_pathtracer/sphere.h"
 
 using namespace std;
 using namespace glm;
 using namespace ppgso;
-
-// Global constants
-const double INF = numeric_limits<double>::max();           // Will be used for infinity
-const double EPS = numeric_limits<double>::epsilon();       // Numerical Epsilon
-const double DELTA = sqrt(EPS);                             // Delta to use
 
 // Parallel FOR template
 template <typename F>
@@ -40,44 +40,6 @@ void parallel_for(int begin, int end, F fn, int fragment_size = 0) {
   parallel_for(mid, end, fn, fragment_size);
   handle.get();
 }
-
-/*!
- * Structure holding origin and direction that represents a ray
- */
-struct Ray {
-  dvec3 origin, direction;
-
-  /*!
-   * Compute a point on the ray
-   * @param t Distance from origin
-   * @return Point on ray where t is the distance from the origin
-   */
-  inline dvec3 point(double t) const {
-    return origin + direction * t;
-  }
-};
-
-/*!
- * Material coefficients for diffuse and emission
- */
-struct Material {
-  dvec3 emission, diffuse;
-  double shininess;
-};
-
-/*!
- * Structure to represent a ray to object collision, the Hit structure will contain material surface normal
- */
-struct Hit {
-  double distance;
-  dvec3 point, normal;
-  Material material;
-};
-
-/*!
- * Constant for collisions that have not hit any object in the scene
- */
-const Hit noHit = { INF, {0,0,0}, {0,0,0}, { {0,0,0}, {0,0,0}, 0 } };
 
 /*!
  * Structure representing a simple camera that is composed on position, up, back and right vectors
@@ -117,63 +79,6 @@ struct Light {
 };
 
 /*!
- * Abstract class for all shapes.
- */
-class Shape {
-  public:
-    virtual Hit hit(const Ray &ray) const = 0;
-};
-
-/*!
- * Structure representing a sphere which is defined by its center position, radius and material
- */
-class Sphere: public Shape {
-  double radius;
-  dvec3 center;
-  Material material;
-
-  /*!
-   * Compute ray to sphere collision
-   * @param ray Ray to compute collision against
-   * @return Hit structure that represents the collision or noHit.
-   */
-  public:
-    Sphere(double radius, dvec3 center, Material material) {
-      this->radius = radius;
-      this->center = center;
-      this->material = material;
-    }
-
-    Hit hit(const Ray &ray) const {
-      auto oc = ray.origin - center;
-      auto a = glm::dot(ray.direction, ray.direction);
-      auto b = dot(oc, ray.direction);
-      auto c = dot(oc, oc) - radius * radius;
-      auto dis = b * b - a * c;
-
-      if (dis > 0) {
-        auto e = sqrt(dis);
-        auto t = (-b - e) / a;
-
-        if ( t > EPS ) {
-          auto pt = ray.point(t);
-          auto n = normalize(pt - center);
-          return {t, pt, n, material};
-        }
-
-        t = (-b + e) / a;
-
-        if ( t > EPS ) {
-          auto pt = ray.point(t);
-          auto n = normalize(pt - center);
-          return {t, pt, n, material};
-        }
-      }
-      return noHit;
-    }
-};
-
-/*!
  * Triangle structure for meshes.
  */
 class Triangle: public Shape {
@@ -188,7 +93,7 @@ class Triangle: public Shape {
       this->material = material;
     }
 
-    Hit hit(const Ray &ray) const {
+    Hit intersect(const Ray &ray) const {
       double t, u, v;
 
       dvec3 v0v1 = points[1] - points[0];
@@ -226,10 +131,10 @@ public:
     this->triangles = move(triangles);
   }
 
-  Hit hit(const Ray &ray) const {
+  Hit intersect(const Ray &ray) const {
     Hit hit = noHit;
     for (auto &triangle : triangles) {
-      Hit lh = triangle->hit(ray);
+      Hit lh = triangle->intersect(ray);
       if (lh.distance < hit.distance) {
         hit = lh;
       }
@@ -277,12 +182,13 @@ struct World {
   inline Hit cast(const Ray &ray) const {
     auto hit = noHit;
     for ( auto& sphere : spheres) {
-      auto lh = sphere->hit(ray);
+      auto lh = sphere->intersect(ray);
 
       if (lh.distance < hit.distance) {
         hit = lh;
       }
     }
+    current_rays ++;
     return hit;
   }
 
@@ -292,7 +198,7 @@ struct World {
    * @param depth Maximum number of collisions to trace
    * @return Color representing the accumulated lighting for earch ray collision
    */
-  inline dvec3 trace(const Ray &ray) const {
+  inline dvec3 trace(const Ray &ray, unsigned int depth) const {
     Hit hit = cast(ray);
 
     // No hit
@@ -300,51 +206,90 @@ struct World {
 
     // Phong components
     dvec3 ambientColor = {0.1, 0.1, 0.1};
-    dvec3 emissionColor = hit.material.emission;
+    dvec3 emissionColor = hit.material->emission;
     dvec3 diffuseColor = {0,0,0};
     dvec3 specularColor = {0,0,0};
-    for( auto& light : lights) {
-      auto lightDirection = light.position - hit.point;
-      auto lightDistance = length(lightDirection);
-      auto lightNormal = normalize(lightDirection);
-      Ray lightRay = {hit.point + hit.normal * DELTA, lightNormal};
+    dvec3 color = {0, 0, 0};
+    if (hit.material->type == MaterialType::SPECULAR && depth != 0) {
+      // Reflect
+      dvec3 reflection = reflect(ray.direction, hit.normal);
+      Ray reflection_ray = Ray{hit.position + hit.normal * DELTA, reflection};
+      color += trace(reflection_ray, depth - 1);
+    } else {
+      for( auto& light : lights) {
+        auto lightDirection = light.position - hit.position;
+        auto lightDistance = length(lightDirection);
+        auto lightNormal = normalize(lightDirection);
+        Ray lightRay = {hit.position + hit.normal * DELTA, lightNormal};
 
-      // Light is obscured by object
-      auto shadowTest = cast(lightRay);
-      if(shadowTest.distance < lightDistance ) continue;
+        // Light is obscured by object
+        auto shadowTest = cast(lightRay);
+        if(shadowTest.distance < lightDistance ) continue;
 
-      // Light is visible
-      auto att_factor = 1.0 / (light.att_const + light.att_linear * lightDistance + light.att_quad * lightDistance * lightDistance);
-      auto dif = glm::clamp(dot(lightRay.direction, hit.normal), 0.0, 1.0);
-      diffuseColor += hit.material.diffuse * att_factor * light.color * dif;
+        // Light is visible
+        auto att_factor = 1.0 / (light.att_const + light.att_linear * lightDistance + light.att_quad * lightDistance * lightDistance);
+        auto dif = glm::clamp(dot(lightRay.direction, hit.normal), 0.0, 1.0);
+        diffuseColor += hit.material->diffuse * att_factor * light.color * dif;
 
-      auto spec = glm::clamp(dot(reflect(ray.direction, hit.normal), lightRay.direction), 0.0, 1.0);
-      specularColor += light.color * att_factor * pow(spec, hit.material.shininess);
+//        auto spec = glm::clamp(dot(reflect(ray.direction, hit.normal), lightRay.direction), 0.0, 1.0);
+//        specularColor += light.color * att_factor * pow(spec, hit.material.shininess);
+      }
+
+      // Additive lighting result
+      color = ambientColor + emissionColor + diffuseColor + specularColor;
     }
-
-    // Additive lighting result
-    dvec3 color = ambientColor + emissionColor + diffuseColor + specularColor;
 
     return clamp(color, 0.0, 1.0);
   }
+
 
   /*!
    * Render the world to the provided image
    * @param image Image to render to
    */
   void render(Image& image, unsigned int samples) const {
-    // Render section of the framebuffer
-    for(int y = 0; y < image.height; ++y) {
-      for (int x = 0; x < image.width; ++x) {
-        dvec3 color;
-        for (unsigned int i = 0; i < samples; i++) {
-          auto ray = camera.generateRay(x, y, image.width, image.height);
-          color = color + trace(ray);
-        }
-        color = color / (double) samples;
-        image.setPixel(x, y, (float) color.r, (float) color.g, (float) color.b);
+    // Get the start time of the execution
+    chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
+
+    auto rendering = async(
+      launch::async,
+      [&] () {
+        parallel_for(
+          0,
+          image.height,
+          // Lambda function
+          [&](int y) {
+            for (int x = 0; x < image.width; ++x) {
+              dvec3 color;
+              for (unsigned int i = 0; i < samples; i++) {
+                auto ray = camera.generateRay(x, y, image.width, image.height);
+                color = color + trace(ray, 5);
+                current_samples ++;
+              }
+              color = color / (double) samples;
+              image.setPixel(x, y, (float) color.r, (float) color.g, (float) color.b);
+            }
+            current_rows ++;
+          }
+        );
       }
+    );
+
+    std::chrono::milliseconds span (1000);
+    while (rendering.wait_for(span) == std::future_status::timeout) {
+      int progress = (int)(((float)current_rows / (float)image.height) * 100.0f);
+      cout << "Progress: " << progress << "%.\n"
+           << "Samples per second: " << current_samples << ".\n"
+           << "Rays per second: " << current_rays << ".\n"
+           << "\n";
+      current_samples = 0;
+      current_rays = 0;
     }
+
+    // Get the end time of the execution and log the duration into the stdout
+    chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+    chrono::duration<double> duration = chrono::duration_cast<chrono::duration<double>> (end - start);
+    cout << "Rendering time: " << duration.count() << "\n";
   }
 };
 
@@ -373,7 +318,7 @@ vector<unique_ptr<Shape>> loadObjFile(const string filename) {
     dvec3 v1 = {positions[mesh.indices[i * 3]].x, positions[mesh.indices[i * 3]].y, positions[mesh.indices[i * 3]].z};
     dvec3 v2 = {positions[mesh.indices[i * 3 + 1]].x, positions[mesh.indices[i * 3 + 1]].y, positions[mesh.indices[i * 3 + 1]].z};
     dvec3 v3 = {positions[mesh.indices[i * 3 + 2]].x, positions[mesh.indices[i * 3 + 2]].y, positions[mesh.indices[i * 3 + 2]].z};
-    triangles.emplace_back(unique_ptr<Triangle>(new Triangle(v1, v2, v3, { { 0, 0, 0}, { 1, 0, 0}, 0, 0 })));
+    triangles.emplace_back(unique_ptr<Triangle>(new Triangle(v1, v2, v3, Material::Gray())));
   }
   return triangles;
 }
@@ -383,16 +328,16 @@ int main() {
   Image image {512, 512};
 
   vector<unique_ptr<Shape>> shapes;
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0, -10010, 0}, { {0, 0, 0}, {.8, .8, .8}, 1, 0 } ) ));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,10010, 0}, { { .3, .3, .3}, { .8, .8, .8}, 1, 0 } )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, { -10010, 0, 0}, { { 0, 0, 0}, { 1, 0, 0}, 1, 0 } )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  10010, 0, 0}, { { 0, 0, 0}, { 0, 1, 0}, 1, 0 } )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, -10010}, { { 0, 0, 0}, { .8, .8, 0}, 1, 1 } )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, 10030}, { { 0, 0, 0}, { .8, .8, 0}, 1, 1 } )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 2, { -5,  -8,  3}, { { 0, 0, 0}, { .7, .7, 0}, 3, 0 } )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 4, {  0,  -6,  0}, { { 0, 0, 0}, { .7, .5, .1}, 5, 0 } )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10, {  10, 10, -10}, { { 0, 0, 0}, { 0, 0, 1}, 30, 0 } )));
-  shapes.push_back(unique_ptr<MeshObject>(new MeshObject (loadObjFile("bunny.obj"))));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0, -10010, 0}, Material::Green() ) ));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,10010, 0}, Material::Red() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, { -10010, 0, 0}, Material::White() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  10010, 0, 0}, Material::White() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, -10010}, Material::Mirror() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, 10030}, Material::Mirror() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 2, { -5,  -8,  3}, Material::Blue() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 4, {  0,  -6,  0}, Material::Cyan() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10, {  10, 10, -10}, Material::Yellow() )));
+//  shapes.push_back(unique_ptr<MeshObject>(new MeshObject (loadObjFile("bunny.obj"))));
 
   vector<unique_ptr<Shape>> vec1 (move(shapes));
 
