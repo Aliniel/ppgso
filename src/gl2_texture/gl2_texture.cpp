@@ -24,7 +24,7 @@ const unsigned int SIZE = 512;
  */
 class TextureWindow : public Window {
 private:
-  // OpenGL program and Mesh to use
+  // OpenGL program and MeshObject to use
   Shader program = {texture_vert_glsl, texture_frag_glsl};
   Mesh quad = {"quad.obj"};
   GLuint texture_id = 0;

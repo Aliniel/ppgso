@@ -64,7 +64,7 @@ The included OpenGL 3.3 examples will generate graphical output directly onto th
 
 - Demonstrates how to load raw texture data as input for a shader
 - The texture itself is loaded from raw RGB image file directly into OpenGL
-- Geometry loading is handled using the Mesh class that also handles loading of UV coordinates
+- Geometry loading is handled using the MeshObject class that also handles loading of UV coordinates
 
 ### [gl3_animate](src/gl3_animate/gl3_animate.cpp) - Dynamically generated 2D animation
 
@@ -94,7 +94,7 @@ The included OpenGL 3.3 examples will generate graphical output directly onto th
 
 ![Screenshot of the gl6_mesh example](doc/gl6_mesh.png)
 
-- Displays geometry that is loaded from Wavefront OBJ files encapsulated in a Mesh object
+- Displays geometry that is loaded from Wavefront OBJ files encapsulated in a MeshObject object
 - Implements object transformation based on mouse movement
 - Combines parallel and orthographic camera projection
 - SPACE stops/resumes the animation

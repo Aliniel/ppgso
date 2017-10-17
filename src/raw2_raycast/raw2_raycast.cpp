@@ -4,8 +4,10 @@
 // - Computes collisions with scene geometry
 // - For each collision point calculates lighting
 
+#include <future>
 #include <iostream>
 #include <ppgso/ppgso.h>
+#include <thread>
 
 using namespace std;
 using namespace glm;
@@ -15,6 +17,29 @@ using namespace ppgso;
 const double INF = numeric_limits<double>::max();           // Will be used for infinity
 const double EPS = numeric_limits<double>::epsilon();       // Numerical Epsilon
 const double DELTA = sqrt(EPS);                             // Delta to use
+
+// Parallel FOR template
+template <typename F>
+void parallel_for(int begin, int end, F fn, int fragment_size = 0) {
+  int fragment_count = thread::hardware_concurrency();
+  int length = end - begin;
+
+  if (fragment_size == 0) {
+    fragment_size = length / fragment_count;
+  }
+
+  if (length <= fragment_size) {
+    for (int i = begin; i < end; i++) {
+      fn(i);
+    }
+    return;
+  }
+
+  int mid = (begin + end) / 2;
+  auto handle = async(std::launch::async, parallel_for<F>, begin, mid, fn, fragment_size);
+  parallel_for(mid, end, fn, fragment_size);
+  handle.get();
+}
 
 /*!
  * Structure holding origin and direction that represents a ray
@@ -92,9 +117,17 @@ struct Light {
 };
 
 /*!
+ * Abstract class for all shapes.
+ */
+class Shape {
+  public:
+    virtual Hit hit(const Ray &ray) const = 0;
+};
+
+/*!
  * Structure representing a sphere which is defined by its center position, radius and material
  */
-struct Sphere {
+class Sphere: public Shape {
   double radius;
   dvec3 center;
   Material material;
@@ -104,32 +137,105 @@ struct Sphere {
    * @param ray Ray to compute collision against
    * @return Hit structure that represents the collision or noHit.
    */
-  inline Hit hit(const Ray &ray) const {
-    auto oc = ray.origin - center;
-    auto a = glm::dot(ray.direction, ray.direction);
-    auto b = dot(oc, ray.direction);
-    auto c = dot(oc, oc) - radius * radius;
-    auto dis = b * b - a * c;
+  public:
+    Sphere(double radius, dvec3 center, Material material) {
+      this->radius = radius;
+      this->center = center;
+      this->material = material;
+    }
 
-    if (dis > 0) {
-      auto e = sqrt(dis);
-      auto t = (-b - e) / a;
+    Hit hit(const Ray &ray) const {
+      auto oc = ray.origin - center;
+      auto a = glm::dot(ray.direction, ray.direction);
+      auto b = dot(oc, ray.direction);
+      auto c = dot(oc, oc) - radius * radius;
+      auto dis = b * b - a * c;
 
-      if ( t > EPS ) {
-        auto pt = ray.point(t);
-        auto n = normalize(pt - center);
-        return {t, pt, n, material};
+      if (dis > 0) {
+        auto e = sqrt(dis);
+        auto t = (-b - e) / a;
+
+        if ( t > EPS ) {
+          auto pt = ray.point(t);
+          auto n = normalize(pt - center);
+          return {t, pt, n, material};
+        }
+
+        t = (-b + e) / a;
+
+        if ( t > EPS ) {
+          auto pt = ray.point(t);
+          auto n = normalize(pt - center);
+          return {t, pt, n, material};
+        }
       }
+      return noHit;
+    }
+};
 
-      t = (-b + e) / a;
+/*!
+ * Triangle structure for meshes.
+ */
+class Triangle: public Shape {
+  vector<dvec3> points;
+  Material material;
 
-      if ( t > EPS ) {
-        auto pt = ray.point(t);
-        auto n = normalize(pt - center);
-        return {t, pt, n, material};
+  public:
+    Triangle(dvec3 v1, dvec3 v2, dvec3 v3, Material material) {
+      this->points.push_back(dvec3(v1));
+      this->points.push_back(dvec3(v2));
+      this->points.push_back(dvec3(v3));
+      this->material = material;
+    }
+
+    Hit hit(const Ray &ray) const {
+      double t, u, v;
+
+      dvec3 v0v1 = points[1] - points[0];
+      dvec3 v0v2 = points[2] - points[0];
+      dvec3 pvec = cross(ray.direction, v0v2);
+      double det = dot(v0v1, pvec);
+
+      if (fabs(det) < EPS) return noHit;
+
+      double invDet = 1 / det;
+
+      dvec3 tvec = ray.origin - points[0];
+
+      u = dot(tvec, pvec) * invDet;
+      if (u < 0 || u > 1) return noHit;
+
+      dvec3 qvec = cross(tvec, v0v1);
+      v = dot(ray.direction, qvec) * invDet;
+      if (v < 0 || u + v > 1) return noHit;
+
+      t = -1 * dot(v0v2, qvec) * invDet;
+
+      return {t, ray.point(t), normalize(cross(v0v1, v0v2)), material};
+    }
+};
+
+/*!
+ * Mesh structure for meshes.
+ */
+class MeshObject: public Shape {
+  vector<unique_ptr<Shape>> triangles;
+
+public:
+  MeshObject(vector<unique_ptr<Shape>> triangles) {
+    this->triangles = move(triangles);
+  }
+
+  Hit hit(const Ray &ray) const {
+    Hit hit = noHit;
+    for (auto &triangle : triangles) {
+      Hit lh = triangle->hit(ray);
+      if (lh.distance < hit.distance) {
+        hit = lh;
       }
     }
-    return noHit;
+
+    return hit;
   }
 };
 
@@ -156,7 +262,12 @@ inline dvec3 RandomDome(const dvec3 &normal) {
 struct World {
   Camera camera;
   vector<Light> lights;
-  vector<Sphere> spheres;
+  vector<unique_ptr<Shape>> spheres;
+
+  // Statistical reports
+  mutable atomic<int> current_rows{0};
+  mutable atomic<int> current_samples{0};
+  mutable atomic<int> current_rays{0};
 
   /*!
    * Compute ray to object collision with any object in the world
@@ -166,7 +277,7 @@ struct World {
   inline Hit cast(const Ray &ray) const {
     auto hit = noHit;
     for ( auto& sphere : spheres) {
-      auto lh = sphere.hit(ray);
+      auto lh = sphere->hit(ray);
 
       if (lh.distance < hit.distance) {
         hit = lh;
@@ -237,9 +348,53 @@ struct World {
   }
 };
 
+/*!
+ * Load Wavefront obj file data as vector of faces for simplicity
+ * @return vector of Faces that can be rendered
+ */
+vector<unique_ptr<Shape>> loadObjFile(const string filename) {
+  // Using tiny obj loader from ppgso lib
+  vector<tinyobj::shape_t> shapes;
+  vector<tinyobj::material_t> materials;
+  string err = tinyobj::LoadObj(shapes, materials, filename.c_str());
+
+  // Will only convert 1st shape to Faces
+  auto &mesh = shapes[0].mesh;
+
+  // Collect data in vectors
+  vector<dvec3> positions;
+  for (int i = 0; i < (int) mesh.positions.size() / 3; ++i) {
+    positions.emplace_back(mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]);
+  }
+
+  // Fill the vector of Faces with data
+  vector<unique_ptr<Shape>> triangles;
+  for (int i = 0; i < (int) (mesh.indices.size() / 3); i++) {
+    dvec3 v1 = {positions[mesh.indices[i * 3]].x, positions[mesh.indices[i * 3]].y, positions[mesh.indices[i * 3]].z};
+    dvec3 v2 = {positions[mesh.indices[i * 3 + 1]].x, positions[mesh.indices[i * 3 + 1]].y, positions[mesh.indices[i * 3 + 1]].z};
+    dvec3 v3 = {positions[mesh.indices[i * 3 + 2]].x, positions[mesh.indices[i * 3 + 2]].y, positions[mesh.indices[i * 3 + 2]].z};
+    triangles.emplace_back(unique_ptr<Triangle>(new Triangle(v1, v2, v3, { { 0, 0, 0}, { 1, 0, 0}, 0, 0 })));
+  }
+  return triangles;
+}
+
 int main() {
   // Image to render to
   Image image {512, 512};
+
+  vector<unique_ptr<Shape>> shapes;
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0, -10010, 0}, { {0, 0, 0}, {.8, .8, .8}, 1, 0 } ) ));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,10010, 0}, { { .3, .3, .3}, { .8, .8, .8}, 1, 0 } )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, { -10010, 0, 0}, { { 0, 0, 0}, { 1, 0, 0}, 1, 0 } )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  10010, 0, 0}, { { 0, 0, 0}, { 0, 1, 0}, 1, 0 } )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, -10010}, { { 0, 0, 0}, { .8, .8, 0}, 1, 1 } )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, 10030}, { { 0, 0, 0}, { .8, .8, 0}, 1, 1 } )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 2, { -5,  -8,  3}, { { 0, 0, 0}, { .7, .7, 0}, 3, 0 } )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 4, {  0,  -6,  0}, { { 0, 0, 0}, { .7, .5, .1}, 5, 0 } )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10, {  10, 10, -10}, { { 0, 0, 0}, { 0, 0, 1}, 30, 0 } )));
+  shapes.push_back(unique_ptr<MeshObject>(new MeshObject (loadObjFile("bunny.obj"))));
+
+  vector<unique_ptr<Shape>> vec1 (move(shapes));
 
   // World to render
   const World world = {
@@ -254,14 +409,7 @@ int main() {
           { { 5, 0, 15}, {0.2, 0.5, 0.2}, 1, .1, .01 },
       },
       { // Spheres
-          { 10000, {  0, -10010, 0}, { {0, 0, 0}, {.8, .8, .8}, 1 } },
-          { 10000, { -10010, 0, 0}, { { 0, 0, 0}, { 1, 0, 0}, 1 } },
-          { 10000, {  10010, 0, 0}, { { 0, 0, 0}, { 0, 1, 0}, 1 } },
-          { 10000, {  0,0, -10010}, { { 0, 0, 0}, { .8, .8, 0}, 1 } },
-          { 10000, {  0,10010, 0}, { { .3, .3, .3}, { .8, .8, .8}, 1 } },
-          {     2, { -5,  -8,  3}, { { 0, 0, 0}, { .7, .7, 0}, 3 } },
-          {     4, {  0,  -6,  0}, { { 0, 0, 0}, { .7, .5, .1}, 5 } },
-          {    10, {  10, 10, -10}, { { 0, 0, 0}, { 0, 0, 1}, 30 } },
+          move(vec1)
       },
   };
 
