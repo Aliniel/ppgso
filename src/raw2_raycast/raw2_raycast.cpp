@@ -45,7 +45,7 @@ void parallel_for(int begin, int end, F fn, int fragment_size = 0) {
  * Structure representing a simple camera that is composed on position, up, back and right vectors
  */
 struct Camera {
-  dvec3 position, back, up, right;
+  vec3 position, back, up, right;
 
   /*!
  * Generate a new Ray for the given viewport size and position
@@ -57,14 +57,14 @@ struct Camera {
  */
   Ray generateRay(int x, int y, int width, int height) const {
     // Camera deltas
-    dvec3 vdu = 2.0 * right / (double)width;
-    dvec3 vdv = 2.0 * -up / (double)height;
+    vec3 vdu = 2.0f * right / (float)width;
+    vec3 vdv = 2.0f * -up / (float)height;
 
     Ray ray;
     ray.origin = position;
     ray.direction = -back
-                    + vdu * ((double)(-width/2 + x) + linearRand(0.0, 1.0))
-                    + vdv * ((double)(-height/2 + y) + linearRand(0.0, 1.0));
+                    + vdu * ((float)(-width/2 + x) + linearRand(0.0f, 1.0f))
+                    + vdv * ((float)(-height/2 + y) + linearRand(0.0f, 1.0f));
     ray.direction = normalize(ray.direction);
     return ray;
   }
@@ -74,49 +74,49 @@ struct Camera {
  * Point light represented by color and position
  */
 struct Light {
-  dvec3 position, color;
-  double att_const, att_linear, att_quad;
+  vec3 position, color;
+  float att_const, att_linear, att_quad;
 };
 
 /*!
  * Triangle structure for meshes.
  */
 class Triangle: public Shape {
-  vector<dvec3> points;
+  vector<vec3> points;
   Material material;
 
   public:
-    Triangle(dvec3 v1, dvec3 v2, dvec3 v3, Material material) {
-      this->points.push_back(dvec3(v1));
-      this->points.push_back(dvec3(v2));
-      this->points.push_back(dvec3(v3));
+    Triangle(vec3 v1, vec3 v2, vec3 v3, Material material) {
+      this->points.push_back(vec3(v1));
+      this->points.push_back(vec3(v2));
+      this->points.push_back(vec3(v3));
       this->material = material;
     }
 
     Hit intersect(const Ray &ray) const {
-      double t, u, v;
+      float t, u, v;
 
-      dvec3 v0v1 = points[1] - points[0];
-      dvec3 v0v2 = points[2] - points[0];
-      dvec3 pvec = cross(ray.direction, v0v2);
-      double det = dot(v0v1, pvec);
+      vec3 v0v1 = points[1] - points[0];
+      vec3 v0v2 = points[2] - points[0];
+      vec3 pvec = cross(ray.direction, v0v2);
+      float det = dot(v0v1, pvec);
 
       if (fabs(det) < EPS) return noHit;
 
-      double invDet = 1 / det;
+      float invDet = 1 / det;
 
-      dvec3 tvec = ray.origin - points[0];
+      vec3 tvec = ray.origin - points[0];
 
       u = dot(tvec, pvec) * invDet;
       if (u < 0 || u > 1) return noHit;
 
-      dvec3 qvec = cross(tvec, v0v1);
+      vec3 qvec = cross(tvec, v0v1);
       v = dot(ray.direction, qvec) * invDet;
       if (v < 0 || u + v > 1) return noHit;
 
       t = -1 * dot(v0v2, qvec) * invDet;
 
-      return {t, ray.point(t), normalize(cross(v0v1, v0v2)), material};
+      return {t, ray.point(t), normalize(cross(v0v1, v0v2)), &material};
     }
 };
 
@@ -145,23 +145,6 @@ public:
 };
 
 /*!
- * Generate a normalized vector that sits on the surface of a half-sphere which is defined using a normal. Used to generate random diffuse reflections.
- * @param normal Normal that defines the dome/half-sphere direction
- * @return Random 3D vector on the dome surface
- */
-inline dvec3 RandomDome(const dvec3 &normal) {
-  double d;
-  dvec3 p;
-
-  do {
-    p = sphericalRand(1.0);
-    d = dot(p, normal);
-  } while(d < 0);
-
-  return p;
-}
-
-/*!
  * Structure to represent the scene/world to render
  */
 struct World {
@@ -184,7 +167,7 @@ struct World {
     for ( auto& sphere : spheres) {
       auto lh = sphere->intersect(ray);
 
-      if (lh.distance < hit.distance) {
+      if (lh.distance < hit.distance && lh.distance > 0.01) {
         hit = lh;
       }
     }
@@ -198,21 +181,21 @@ struct World {
    * @param depth Maximum number of collisions to trace
    * @return Color representing the accumulated lighting for earch ray collision
    */
-  inline dvec3 trace(const Ray &ray, unsigned int depth) const {
+  inline vec3 trace(const Ray &ray, unsigned int depth) const {
     Hit hit = cast(ray);
 
     // No hit
     if (hit.distance >= INF) return {0, 0, 0};
 
     // Phong components
-    dvec3 ambientColor = {0.1, 0.1, 0.1};
-    dvec3 emissionColor = hit.material->emission;
-    dvec3 diffuseColor = {0,0,0};
-    dvec3 specularColor = {0,0,0};
-    dvec3 color = {0, 0, 0};
+    vec3 ambientColor = {0.1f, 0.1f, 0.1f};
+    vec3 emissionColor = hit.material->emission;
+    vec3 diffuseColor = {0,0,0};
+    vec3 specularColor = {0,0,0};
+    vec3 color = {0, 0, 0};
     if (hit.material->type == MaterialType::SPECULAR && depth != 0) {
       // Reflect
-      dvec3 reflection = reflect(ray.direction, hit.normal);
+      vec3 reflection = reflect(ray.direction, hit.normal);
       Ray reflection_ray = Ray{hit.position + hit.normal * DELTA, reflection};
       color += trace(reflection_ray, depth - 1);
     } else {
@@ -227,8 +210,8 @@ struct World {
         if(shadowTest.distance < lightDistance ) continue;
 
         // Light is visible
-        auto att_factor = 1.0 / (light.att_const + light.att_linear * lightDistance + light.att_quad * lightDistance * lightDistance);
-        auto dif = glm::clamp(dot(lightRay.direction, hit.normal), 0.0, 1.0);
+        float att_factor = 1.0f / (light.att_const + light.att_linear * lightDistance + light.att_quad * lightDistance * lightDistance);
+        auto dif = glm::clamp(dot(lightRay.direction, hit.normal), 0.0f, 1.0f);
         diffuseColor += hit.material->diffuse * att_factor * light.color * dif;
 
 //        auto spec = glm::clamp(dot(reflect(ray.direction, hit.normal), lightRay.direction), 0.0, 1.0);
@@ -239,7 +222,7 @@ struct World {
       color = ambientColor + emissionColor + diffuseColor + specularColor;
     }
 
-    return clamp(color, 0.0, 1.0);
+    return clamp(color, 0.0f, 1.0f);
   }
 
 
@@ -260,14 +243,14 @@ struct World {
           // Lambda function
           [&](int y) {
             for (int x = 0; x < image.width; ++x) {
-              dvec3 color;
+              vec3 color;
               for (unsigned int i = 0; i < samples; i++) {
                 auto ray = camera.generateRay(x, y, image.width, image.height);
-                color = color + trace(ray, 5);
+                color = color + trace(ray, 2);
                 current_samples ++;
               }
-              color = color / (double) samples;
-              image.setPixel(x, y, (float) color.r, (float) color.g, (float) color.b);
+              color = color / (float) samples;
+              image.setPixel(x, y, color.r, color.g, color.b);
             }
             current_rows ++;
           }
@@ -307,7 +290,7 @@ vector<unique_ptr<Shape>> loadObjFile(const string filename) {
   auto &mesh = shapes[0].mesh;
 
   // Collect data in vectors
-  vector<dvec3> positions;
+  vector<vec3> positions;
   for (int i = 0; i < (int) mesh.positions.size() / 3; ++i) {
     positions.emplace_back(mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]);
   }
@@ -315,9 +298,9 @@ vector<unique_ptr<Shape>> loadObjFile(const string filename) {
   // Fill the vector of Faces with data
   vector<unique_ptr<Shape>> triangles;
   for (int i = 0; i < (int) (mesh.indices.size() / 3); i++) {
-    dvec3 v1 = {positions[mesh.indices[i * 3]].x, positions[mesh.indices[i * 3]].y, positions[mesh.indices[i * 3]].z};
-    dvec3 v2 = {positions[mesh.indices[i * 3 + 1]].x, positions[mesh.indices[i * 3 + 1]].y, positions[mesh.indices[i * 3 + 1]].z};
-    dvec3 v3 = {positions[mesh.indices[i * 3 + 2]].x, positions[mesh.indices[i * 3 + 2]].y, positions[mesh.indices[i * 3 + 2]].z};
+    vec3 v1 = {positions[mesh.indices[i * 3]].x, positions[mesh.indices[i * 3]].y, positions[mesh.indices[i * 3]].z};
+    vec3 v2 = {positions[mesh.indices[i * 3 + 1]].x, positions[mesh.indices[i * 3 + 1]].y, positions[mesh.indices[i * 3 + 1]].z};
+    vec3 v3 = {positions[mesh.indices[i * 3 + 2]].x, positions[mesh.indices[i * 3 + 2]].y, positions[mesh.indices[i * 3 + 2]].z};
     triangles.emplace_back(unique_ptr<Triangle>(new Triangle(v1, v2, v3, Material::Gray())));
   }
   return triangles;
@@ -331,9 +314,9 @@ int main() {
   shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0, -10010, 0}, Material::Green() ) ));
   shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,10010, 0}, Material::Red() )));
   shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, { -10010, 0, 0}, Material::White() )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  10010, 0, 0}, Material::White() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  10010, 0, 0}, Material::Mirror() )));
   shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, -10010}, Material::Mirror() )));
-  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, 10030}, Material::Mirror() )));
+  shapes.push_back(unique_ptr<Sphere>(new Sphere( 10000, {  0,0, 10030}, Material::White() )));
   shapes.push_back(unique_ptr<Sphere>(new Sphere( 2, { -5,  -8,  3}, Material::Blue() )));
   shapes.push_back(unique_ptr<Sphere>(new Sphere( 4, {  0,  -6,  0}, Material::Cyan() )));
   shapes.push_back(unique_ptr<Sphere>(new Sphere( 10, {  10, 10, -10}, Material::Yellow() )));
