@@ -208,6 +208,11 @@ add_executable(task4_bezier src/task4_bezier/task4_bezier.cpp)
 target_link_libraries(task4_bezier ppgso shaders)
 install (TARGETS task4_bezier DESTINATION .)
 
+# Project II
+add_executable(project_2 src/bmakan/project_2.cpp)
+target_link_libraries(project_2 ppgso)
+install (TARGETS project_2 DESTINATION .)
+
 #
 # INSTALLATION
 #

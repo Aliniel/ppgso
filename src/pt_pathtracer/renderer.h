@@ -1,10 +1,40 @@
 #pragma once
 
+#include <chrono>
+#include <future>
+
 #include "ray.h"
 #include "shape.h"
 #include "camera.h"
 
+// Parallel FOR template
+template <typename F>
+void parallel_for(int begin, int end, F fn, int fragment_size = 0) {
+  int fragment_count = std::thread::hardware_concurrency();
+  int length = end - begin;
+
+  if (fragment_size == 0) {
+    fragment_size = length / fragment_count;
+  }
+
+  if (length <= fragment_size) {
+    for (int i = begin; i < end; i++) {
+      fn(i);
+    }
+    return;
+  }
+
+  int mid = (begin + end) / 2;
+  auto handle = async(std::launch::async, parallel_for<F>, begin, mid, fn, fragment_size);
+  parallel_for(mid, end, fn, fragment_size);
+  handle.get();
+}
+
 class Renderer {
+  // Statistical reports
+  mutable std::atomic<int> current_rows{0};
+  mutable std::atomic<int> current_samples{0};
+  mutable std::atomic<int> current_rays{0};
 
 public:
   Camera camera;
@@ -27,15 +57,49 @@ public:
   inline Renderer(int width, int height) : width{width}, height{height}, samples{(size_t)width * height} {}
 
   inline void render(int depth = 5) {
-    // Render the scene
-    #pragma omp parallel for
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        auto ray = camera.generateRay(x, y, width, height);
-        Color sample = trace(ray, depth);
-        samples[width*y+x].add(sample);
+    auto rendering = async(
+      std::launch::async,
+      [&] () {
+        parallel_for(
+          0,
+          height,
+          // Lambda function
+          [&](int y) {
+            for (int x = 0; x < width; ++x) {
+              auto ray = camera.generateRay(x, y, width, height);
+              Color sample = trace(ray, depth);
+              samples[width*y+x].add(sample);
+              this->current_samples ++;
+            }
+            this->current_rows ++;
+          }
+        );
       }
+    );
+
+    std::chrono::milliseconds span (1000);
+    while (rendering.wait_for(span) == std::future_status::timeout) {
+      int progress = (int)(((float)current_rows / (float)height) * 100.0f) % 100;
+      std::cout << "Progress: " << progress << "%.\n"
+           << "Samples per second: " << current_samples << ".\n"
+           << "Rays per second: " << current_rays << ".\n"
+           << "\n";
+      current_samples = 0;
+      current_rays = 0;
     }
+
+
+//    // Render the scene
+//    #pragma omp parallel for
+//    for (int y = 0; y < height; ++y) {
+//      for (int x = 0; x < width; ++x) {
+//        auto ray = camera.generateRay(x, y, width, height);
+//        Color sample = trace(ray, depth);
+//        samples[width*y+x].add(sample);
+//        this->current_samples ++;
+//      }
+//      this->current_rows ++;
+//    }
 
  }
 
@@ -54,6 +118,7 @@ public:
         hit = lh;
       }
     }
+    this->current_rays ++;
     return hit;
   }
 

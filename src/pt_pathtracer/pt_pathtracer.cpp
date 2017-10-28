@@ -12,15 +12,47 @@
 #include <shaders/texture_vert_glsl.h>
 #include <shaders/texture_frag_glsl.h>
 
+#include "box.h"
+#include "meshobject.h"
 #include "renderer.h"
 #include "sphere.h"
-#include "box.h"
 
 using namespace std;
 using namespace glm;
 using namespace ppgso;
 
 const unsigned int SIZE = 512;
+
+/*!
+ * Load Wavefront obj file data as vector of faces for simplicity
+ * @return vector of Faces that can be rendered
+ */
+vector<Triangle> loadObjFile(const string filename) {
+  // Using tiny obj loader from ppgso lib
+  vector<tinyobj::shape_t> shapes;
+  vector<tinyobj::material_t> materials;
+  string err = tinyobj::LoadObj(shapes, materials, filename.c_str());
+
+  // Will only convert 1st shape to Faces
+  auto &mesh = shapes[0].mesh;
+
+  // Collect data in vectors
+  vector<vec3> positions;
+  for (int i = 0; i < (int) mesh.positions.size() / 3; ++i) {
+    positions.emplace_back(mesh.positions[3 * i], mesh.positions[3 * i + 1], mesh.positions[3 * i + 2]);
+  }
+
+  // Fill the vector of Faces with data
+  vector<Triangle> triangles;
+  for (int i = 0; i < (int) (mesh.indices.size() / 3); i++) {
+    vec3 v1 = {positions[mesh.indices[i * 3]].x * 75 + 2, positions[mesh.indices[i * 3]].y * 75 - 10, positions[mesh.indices[i * 3]].z * 75};
+    vec3 v2 = {positions[mesh.indices[i * 3 + 1]].x * 75 + 2, positions[mesh.indices[i * 3 + 1]].y * 75 - 10, positions[mesh.indices[i * 3 + 1]].z * 75};
+    vec3 v3 = {positions[mesh.indices[i * 3 + 2]].x * 75 + 2, positions[mesh.indices[i * 3 + 2]].y * 75 - 10, positions[mesh.indices[i * 3 + 2]].z * 75};
+    auto triangle = Triangle(v1, v2, v3, Material::White());
+    triangles.emplace_back(move(triangle));
+  }
+  return triangles;
+}
 
 /*!
  * Custom window that will update its contents to create animation
@@ -37,6 +69,7 @@ private:
   Renderer renderer;
 
   Texture framebuffer;
+
 public:
   /*!
    * Construct a new Window and initialize shader uniform variables
@@ -45,7 +78,7 @@ public:
     // Prepare the scene
     auto& scene = renderer.scene;
 
-    renderer.camera.position = {0,0,15};
+    renderer.camera.position = {0,0,15}; // 15
 
     // Boxes
     auto floor = Box(Position{-10,-11,-10},Position{10,-10,20},Material::White());
@@ -60,20 +93,28 @@ public:
     renderer.add(frontWall);
     auto ceiling = Box(Position{-10,10,-10},Position{10,11,20},Material::Light());
     renderer.add(ceiling);
-
-    // Box with rotation
-    auto yellowBox = Box(Position{-1,0,-1},Position{1,1,1},Material::Yellow());
-    auto transformedBox = TransformedShape(yellowBox);
-    transformedBox.position = {0,-10,0};
-    transformedBox.rotation = {0,0,M_PI/3.0};
-    transformedBox.scale = {2,5,2};
-    renderer.add(std::move(transformedBox));
+//
+//    // Box with rotation
+//    auto yellowBox = Box(Position{-1,0,-1},Position{1,1,1},Material::Yellow());
+//    auto transformedBox = TransformedShape(make_unique<Box>(yellowBox));
+//    transformedBox.position = {0,-10,0};
+//    transformedBox.rotation = {0,0,M_PI/3.0};
+//    transformedBox.scale = {20,5,2};
+//    renderer.add(std::move(transformedBox));
 
      // Spheres
     auto glassSphere = Sphere(2,Position{-5,-7,3},Material::Glass());
     renderer.add(glassSphere);
     auto cornerSphere = Sphere(10,Position{ 10,10,-10},Material::Blue());
     renderer.add(cornerSphere);
+
+    // Standford Bunny
+    auto bunny = MeshObject(loadObjFile("bunny.obj"), false);
+    renderer.add(bunny);
+//    auto transformedBunny = TransformedShape(make_unique<MeshObject>(bunny));
+//    transformedBunny.position = {0, 0, -10};
+//    transformedBunny.scale = {150, 150, 150};
+//    renderer.add(move(bunny));
 
     // Pass the texture to the program as uniform input called "Texture"
     program.setUniform("Texture", framebuffer);
@@ -88,7 +129,16 @@ public:
    * Render window content when needed
    */
   void onIdle() override {
+    // Get the start time of the execution
+    chrono::high_resolution_clock::time_point start = chrono::high_resolution_clock::now();
+
     renderer.render();
+
+    // Get the end time of the execution and log the duration into the stdout
+    chrono::high_resolution_clock::time_point end = chrono::high_resolution_clock::now();
+    chrono::duration<double> duration = chrono::duration_cast<chrono::duration<double>> (end - start);
+    cout << "Rendering time: " << duration.count() << "\n";
+
     auto& samples = renderer.samples;
 
     // Generate the framebuffer
