@@ -17,11 +17,18 @@
 #include "renderer.h"
 #include "sphere.h"
 
+typedef enum ToneMapping {
+  LINEAR,
+  GLOBAL_REINHARD,
+  UNCHARTED_2,
+};
+
 using namespace std;
 using namespace glm;
 using namespace ppgso;
 
 const unsigned int SIZE = 512;
+ToneMapping TONE_MAPPING;
 
 /*!
  * Load Wavefront obj file data as vector of faces for simplicity
@@ -48,7 +55,7 @@ vector<Triangle> loadObjFile(const string filename) {
     vec3 v1 = {positions[mesh.indices[i * 3]].x * 75 + 2, positions[mesh.indices[i * 3]].y * 75 - 10, positions[mesh.indices[i * 3]].z * 75};
     vec3 v2 = {positions[mesh.indices[i * 3 + 1]].x * 75 + 2, positions[mesh.indices[i * 3 + 1]].y * 75 - 10, positions[mesh.indices[i * 3 + 1]].z * 75};
     vec3 v3 = {positions[mesh.indices[i * 3 + 2]].x * 75 + 2, positions[mesh.indices[i * 3 + 2]].y * 75 - 10, positions[mesh.indices[i * 3 + 2]].z * 75};
-    auto triangle = Triangle(v1, v2, v3, Material::White());
+    auto triangle = Triangle(v1, v2, v3, Material::Cyan());
     triangles.emplace_back(move(triangle));
   }
   return triangles;
@@ -69,6 +76,20 @@ private:
   Renderer renderer;
 
   Texture framebuffer;
+
+  // Uncharted Tone Mapper constants
+  const float A = 0.15;
+  const float B = 0.50;
+  const float C = 0.10;
+  const float D = 0.20;
+  const float E = 0.02;
+  const float F = 0.30;
+  const float W = 11.2;
+  const float ExposureBias = 2.0f;
+
+  Color Uncharted2Tonemap(Color x) {
+    return ((x*(A*x+C*B)+D*E)/(x*(A*x+B)+D*F))-E/F;
+  }
 
 public:
   /*!
@@ -91,7 +112,7 @@ public:
     renderer.add(backWall);
     auto frontWall = Box(Position{-10,-10,20},Position{10,10,21},Material::Gray());
     renderer.add(frontWall);
-    auto ceiling = Box(Position{-10,10,-10},Position{10,11,20},Material::Light());
+    auto ceiling = Box(Position{-10,10,-10},Position{10,11,20},Material::Gray());
     renderer.add(ceiling);
 //
 //    // Box with rotation
@@ -103,13 +124,13 @@ public:
 //    renderer.add(std::move(transformedBox));
 
      // Spheres
-    auto glassSphere = Sphere(2,Position{-5,-7,3},Material::Glass());
+    auto glassSphere = Sphere(1,Position{-5,-7,3},Material::Light());
     renderer.add(glassSphere);
     auto cornerSphere = Sphere(10,Position{ 10,10,-10},Material::Blue());
     renderer.add(cornerSphere);
 
     // Standford Bunny
-    auto bunny = MeshObject(loadObjFile("bunny.obj"), false);
+    auto bunny = MeshObject(loadObjFile("bunny.obj"), true);
     renderer.add(bunny);
 //    auto transformedBunny = TransformedShape(make_unique<MeshObject>(bunny));
 //    transformedBunny.position = {0, 0, -10};
@@ -147,7 +168,44 @@ public:
     for (int y = 0; y < image.height; ++y) {
       for (int x = 0; x < image.width; ++x) {
         Color& color = samples[image.width*y+x].color;
-        image.setPixel(x, y, (float) color.r, (float) color.g, (float) color.b);
+
+        Color visible;
+        visible.r = color.r;
+        visible.g = color.g;
+        visible.b = color.b;
+
+        // Exposure
+        visible.r *= 16.0f;
+        visible.g *= 16.0f;
+        visible.b *= 16.0f;
+
+        // Clamp
+        color = clamp(color, 0.0f, 1.0f);
+
+        if (TONE_MAPPING == ToneMapping::GLOBAL_REINHARD) {
+          float luminance = 0.212671f * color.r + 0.71516f * color.g + 0.072169f * color.b;
+          float luminanceD = luminance / (1.0f + luminance);
+
+          visible.r = luminanceD * visible.r / luminance;
+          visible.g = luminanceD * visible.g / luminance;
+          visible.b = luminanceD * visible.b / luminance;
+
+        } else if (TONE_MAPPING == ToneMapping::LINEAR) {
+          ;
+        } else if (TONE_MAPPING == ToneMapping::UNCHARTED_2) {
+          visible = Uncharted2Tonemap(ExposureBias * visible);
+
+          Color whiteScale = 1.0f/Uncharted2Tonemap({W, W, W});
+          visible *= whiteScale;
+        }
+
+        // Gamma Correction
+        float powVal = 1/2.2f;
+        visible.r = pow(visible.r, powVal);
+        visible.g = pow(visible.g, powVal);
+        visible.b = pow(visible.b, powVal);
+
+        image.setPixel(x, y, (float) visible.r, (float) visible.g, (float) visible.b);
       }
     }
     framebuffer.update();
@@ -166,6 +224,9 @@ public:
 int main() {
   // Create a window with OpenGL 3.3 enabled
   PathTracerWindow window;
+
+  // Initialize Tone Mapping
+  TONE_MAPPING = ToneMapping::UNCHARTED_2;
 
   // Main execution loop
   while (window.pollEvents()) {}
